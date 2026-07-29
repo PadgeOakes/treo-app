@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Treo — Orientation</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0B4F6C" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Treo" />
+<link rel="apple-touch-icon" href="icons/icon-180.png" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{--ocean:#0B4F6C;--sand:#F5F2EC;--white:#FFFFFF;--ink:#16202A;--slate:#4A5D6B;--mist:#E4EEF3;--coral:#D95F3B;--gold:#C89A3C;--seafoam:#1A8A76}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:var(--sand);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{background:var(--white);border-radius:20px;box-shadow:0 10px 30px rgba(11,79,108,.15);padding:28px 24px;max-width:440px;width:100%}
+h1{font-family:'DM Serif Display',serif;font-size:1.35rem;color:var(--ink);margin-bottom:4px;text-align:center}
+.subtitle{font-size:.8rem;color:var(--slate);text-align:center;margin-bottom:22px}
+.screen{display:none}
+.screen.active{display:block}
+button{background:var(--ocean);color:white;border:none;border-radius:10px;padding:12px 18px;font-size:.92rem;font-weight:600;width:100%;margin-bottom:10px;cursor:pointer}
+button.secondary{background:var(--white);color:var(--ocean);border:1.5px solid var(--mist)}
+button.link{background:none;color:var(--slate);font-weight:500;font-size:.82rem;text-decoration:underline;padding:6px}
+button.gps{background:var(--seafoam);font-size:.82rem;padding:9px}
+.big-help{background:var(--gold);font-size:1.15rem;padding:22px;margin-bottom:8px}
+.error{color:var(--coral)}
+
+#screen-home .home-buttons{margin-top:6px}
+
+#map{width:100%;height:220px;border-radius:14px;margin-bottom:14px;background:var(--mist)}
+.ground-status{font-size:.85rem;color:var(--slate);text-align:center;margin-bottom:10px}
+.ground-msg{background:var(--sand);border-radius:14px;padding:16px;font-size:1rem;color:var(--ink);line-height:1.5;text-align:center;margin-bottom:14px}
+.ground-places{font-size:.85rem;color:var(--seafoam);font-weight:600;text-align:center;margin-bottom:14px}
+.check-row{font-size:.85rem;color:var(--slate);text-align:center;margin-bottom:10px}
+.orient-buttons{display:flex;gap:8px}
+.orient-buttons button{margin-bottom:0}
+.btn-yes{background:var(--seafoam)}
+.btn-no{background:var(--coral)}
+.handoff-box{background:#FEE9DC;border-radius:12px;padding:14px;text-align:center;margin-top:12px;font-size:.88rem;color:var(--ink)}
+
+.field{margin-bottom:12px;text-align:left}
+.field label{font-size:.74rem;color:var(--slate);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px}
+.field input,.field textarea{width:100%;padding:9px 12px;border:1.5px solid var(--mist);border-radius:8px;font-size:.9rem;font-family:inherit}
+.field textarea{resize:vertical;min-height:80px}
+.gps-row{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+.gps-row input{flex:1}
+.gps-row button{width:auto;margin-bottom:0;white-space:nowrap}
+.zone-row{display:flex;align-items:center;justify-content:space-between;background:var(--sand);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.zone-name{font-size:.88rem;font-weight:600;color:var(--ink)}
+.zone-radius{font-size:.72rem;color:var(--slate)}
+.zone-tag{font-size:.72rem;color:var(--seafoam);margin-top:2px}
+.zone-remove{background:none;border:none;color:var(--coral);font-size:.8rem;width:auto;padding:2px 8px;margin:0}
+hr{border:none;border-top:1px solid var(--mist);margin:16px 0}
+
+.event-row{background:var(--sand);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.event-top{display:flex;align-items:center;justify-content:space-between}
+.event-title{font-size:.88rem;font-weight:600;color:var(--ink)}
+.event-when{font-size:.72rem;color:var(--slate)}
+.event-addr{font-size:.72rem;color:var(--slate);margin-top:2px}
+.event-geo{font-size:.68rem;margin-top:3px}
+.geo-ok{color:var(--seafoam)}
+.geo-bad{color:var(--coral)}
+.tabs{display:flex;gap:6px;margin-bottom:16px}
+.tab{flex:1;background:var(--sand);color:var(--slate);border-radius:8px;padding:8px;font-size:.78rem;font-weight:600;text-align:center;cursor:pointer;width:auto;margin-bottom:0}
+.tab.active{background:var(--ocean);color:white}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+</style>
+</head>
+<body>
+
+<!-- SCREEN 1: HOME -->
+<div class="card screen active" id="screen-home">
+  <h1>Treo</h1>
+  <div class="subtitle">Orientation check</div>
+  <div class="home-buttons">
+    <button class="big-help" onclick="goToHelp()">I Need Help</button>
+    <button class="link" onclick="goToSetup()">Set Up My Places</button>
+    <button class="link" onclick="goToSchedule()">My Schedule</button>
+  </div>
+</div>
+
+<!-- SCREEN 2: GROUNDING / HELP VIEW -->
+<div class="card screen" id="screen-help">
+  <h1>You're Here</h1>
+  <div class="ground-status" id="groundStatus">Locating...</div>
+  <div id="map"></div>
+  <div class="ground-msg" id="groundMsg"></div>
+  <div class="ground-places" id="groundPlaces"></div>
+
+  <div id="checkRow" style="display:none">
+    <div class="check-row">Does this help?</div>
+    <div class="orient-buttons">
+      <button class="btn-yes" onclick="helpResponse(true)">Yes</button>
+      <button class="btn-no" onclick="helpResponse(false)">No</button>
+    </div>
+  </div>
+
+  <div class="handoff-box" id="handoffBox" style="display:none">
+    That's okay — this needs more than a quick reminder. Let's talk it through properly. (In the full version, this hands off to a real conversation with Cara/Nora here.)
+  </div>
+
+  <hr>
+  <button class="secondary" onclick="goHome()">&larr; Back</button>
+</div>
+
+<!-- SCREEN 3: ZONE SETUP -->
+<div class="card screen" id="screen-setup">
+  <h1>My Places</h1>
+  <div class="subtitle">Zones Treo will recognize</div>
+
+  <div id="zoneList"></div>
+
+  <hr>
+
+  <div class="field">
+    <label>Name</label>
+    <input type="text" id="zName" placeholder="e.g. Elm Street Plaza" />
+  </div>
+  <div class="gps-row">
+    <input type="text" id="zAddress" placeholder="Type an address..." />
+    <button class="gps" onclick="useGpsForZone()">Use My Location</button>
+  </div>
+  <div class="field">
+    <label>Radius (miles)</label>
+    <input type="text" id="zRadius" placeholder="0.25" value="0.25" />
+  </div>
+  <div class="field">
+    <label>What's here / when (optional)</label>
+    <input type="text" id="zTag" placeholder="e.g. Ace Hardware, Pet Store, Safeway — Wed/Sat mornings" />
+  </div>
+  <div id="setupStatus" style="font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px"></div>
+  <button onclick="saveZone()">Save Place</button>
+
+  <hr>
+  <button class="secondary" onclick="goHome()">&larr; Back</button>
+</div>
+
+<!-- SCREEN 4: SCHEDULE -->
+<div class="card screen" id="screen-schedule">
+  <h1>My Schedule</h1>
+  <div class="subtitle">Events Treo will check against your location</div>
+
+  <div id="eventList"></div>
+
+  <hr>
+
+  <div class="tabs">
+    <div class="tab active" id="tabSingle" onclick="switchTab('single')">Add One</div>
+    <div class="tab" id="tabBulk" onclick="switchTab('bulk')">Paste Several</div>
+  </div>
+
+  <div class="tab-panel active" id="panelSingle">
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="eDate" />
+    </div>
+    <div class="field">
+      <label>Time</label>
+      <input type="time" id="eTime" />
+    </div>
+    <div class="field">
+      <label>Title</label>
+      <input type="text" id="eTitle" placeholder="e.g. Dr. Alvarez - checkup" />
+    </div>
+    <div class="gps-row">
+      <input type="text" id="eAddress" placeholder="Address..." />
+      <button class="gps" onclick="useGpsForEvent()">Use My Location</button>
+    </div>
+    <div id="scheduleStatus" style="font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px"></div>
+    <button onclick="saveEvent()">Save Event</button>
+  </div>
+
+  <div class="tab-panel" id="panelBulk">
+    <div class="field">
+      <label>Paste events — one per line: date | time | title | address</label>
+      <textarea id="bulkText" placeholder="2026-07-28 | 14:00 | Dr. Alvarez checkup | 123 Main St, Santa Cruz, CA
+2026-07-30 | 09:30 | Physio | 456 Ocean Ave, Santa Cruz, CA"></textarea>
+    </div>
+    <div id="bulkStatus" style="font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px"></div>
+    <button onclick="saveBulkEvents()">Add All</button>
+  </div>
+
+  <hr>
+  <button class="secondary" onclick="goHome()">&larr; Back</button>
+</div>
+
+<script>
+let zones = JSON.parse(localStorage.getItem('treoZones') || '[]');
+let events = JSON.parse(localStorage.getItem('treoEvents') || '[]');
+let currentLat = null, currentLon = null;
+let leafletMap = null, userMarker = null, zoneMarker = null;
+const SCHEDULE_MATCH_RADIUS = 0.15; // miles - tighter than a general zone, since it's a specific appointment address
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function goHome(){ showScreen('screen-home'); }
+function goToSetup(){ renderZones(); showScreen('screen-setup'); }
+function goToSchedule(){ renderEvents(); showScreen('screen-schedule'); }
+
+function switchTab(which){
+  document.getElementById('tabSingle').classList.toggle('active', which==='single');
+  document.getElementById('tabBulk').classList.toggle('active', which==='bulk');
+  document.getElementById('panelSingle').classList.toggle('active', which==='single');
+  document.getElementById('panelBulk').classList.toggle('active', which==='bulk');
+}
+
+function toRad(deg){ return deg * Math.PI / 180; }
+function haversineDistance(lat1, lon1, lat2, lon2){
+  const R = 3958.8;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function findMatchingZone(lat, lon){
+  for (const z of zones) {
+    if (haversineDistance(lat, lon, z.lat, z.lon) <= z.radius) return z;
+  }
+  return null;
+}
+function findMatchingEvent(lat, lon){
+  const todayStr = new Date().toISOString().slice(0,10);
+  const todays = events.filter(e => e.date === todayStr && e.lat != null && e.lon != null);
+  for (const e of todays) {
+    if (haversineDistance(lat, lon, e.lat, e.lon) <= SCHEDULE_MATCH_RADIUS) return e;
+  }
+  return null;
+}
+
+async function tryGeocode(query){
+  const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(query));
+  const data = await res.json();
+  if (!data.length) return null;
+  return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+}
+
+async function geocodeAddress(address){
+  // First try the address exactly as given.
+  let result = await tryGeocode(address);
+  if (result) return result;
+
+  // If that fails and there's a comma, a business name may be leading the line
+  // (e.g. "Safeway, 2203 Mission St, Santa Cruz, CA") and confusing the lookup.
+  // Retry with just everything after the first comma - the actual street address.
+  const commaIndex = address.indexOf(',');
+  if (commaIndex !== -1) {
+    await new Promise(r => setTimeout(r, 1100)); // be polite to the free lookup service
+    const stripped = address.slice(commaIndex + 1).trim();
+    result = await tryGeocode(stripped);
+    if (result) return result;
+  }
+  return null;
+}
+function getGpsPosition(){
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) { reject(new Error('Location services not available')); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+      (err) => reject(err),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
+}
+
+/* ---------- SCREEN 2: HELP FLOW ---------- */
+function goToHelp(){
+  showScreen('screen-help');
+  document.getElementById('checkRow').style.display = 'none';
+  document.getElementById('handoffBox').style.display = 'none';
+  document.getElementById('groundMsg').textContent = '';
+  document.getElementById('groundPlaces').textContent = '';
+  const status = document.getElementById('groundStatus');
+  status.textContent = 'Locating...';
+  status.className = 'ground-status';
+
+  if (!navigator.geolocation){
+    status.textContent = 'Location services are not available on this device/browser.';
+    status.className = 'ground-status error';
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition((pos) => {
+    currentLat = pos.coords.latitude;
+    currentLon = pos.coords.longitude;
+    renderGrounding();
+  }, (err) => {
+    status.textContent = 'Could not get your location: ' + err.message;
+    status.className = 'ground-status error';
+  }, { enableHighAccuracy: true, timeout: 10000 });
+}
+
+function renderGrounding(){
+  const status = document.getElementById('groundStatus');
+  const msg = document.getElementById('groundMsg');
+  const places = document.getElementById('groundPlaces');
+  const now = new Date();
+  const dayName = now.toLocaleDateString('en-US', { weekday: 'long' });
+  const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  status.textContent = dayName + ', ' + timeStr;
+
+  // Schedule match takes priority over a general saved zone - it's more specific
+  const matchedEvent = findMatchingEvent(currentLat, currentLon);
+  const matchedZone = findMatchingZone(currentLat, currentLon);
+
+  if (matchedEvent) {
+    const timeLabel = matchedEvent.time ? ' (' + matchedEvent.time + ')' : '';
+    msg.textContent = "You're at your appointment: " + matchedEvent.title + timeLabel + '.';
+    places.textContent = matchedEvent.address || '';
+  } else if (matchedZone) {
+    msg.textContent = "You're at " + matchedZone.name + '.';
+    places.textContent = matchedZone.tag || '';
+  } else {
+    msg.textContent = "You're not at one of your saved places or today's scheduled events right now.";
+    places.textContent = '';
+  }
+
+  drawMap(matchedZone, matchedEvent);
+  document.getElementById('checkRow').style.display = 'block';
+}
+
+function drawMap(matchedZone, matchedEvent){
+  if (!leafletMap) {
+    leafletMap = L.map('map', { zoomControl: false, attributionControl: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(leafletMap);
+  }
+  const matched = matchedEvent || matchedZone;
+  leafletMap.setView([currentLat, currentLon], matched ? 15 : 13);
+  if (userMarker) leafletMap.removeLayer(userMarker);
+  userMarker = L.circleMarker([currentLat, currentLon], { radius: 8, color: '#0B4F6C', fillColor: '#0B4F6C', fillOpacity: 1 }).addTo(leafletMap);
+
+  if (zoneMarker) { leafletMap.removeLayer(zoneMarker); zoneMarker = null; }
+  if (matchedEvent) {
+    zoneMarker = L.circle([matchedEvent.lat, matchedEvent.lon], { radius: SCHEDULE_MATCH_RADIUS * 1609.34, color: '#C89A3C', fillColor: '#C89A3C', fillOpacity: 0.15 }).addTo(leafletMap);
+  } else if (matchedZone) {
+    zoneMarker = L.circle([matchedZone.lat, matchedZone.lon], { radius: matchedZone.radius * 1609.34, color: '#1A8A76', fillColor: '#1A8A76', fillOpacity: 0.15 }).addTo(leafletMap);
+  }
+  setTimeout(() => leafletMap.invalidateSize(), 200);
+}
+
+function helpResponse(helped){
+  document.getElementById('checkRow').style.display = 'none';
+  if (helped) {
+    document.getElementById('groundStatus').textContent = 'Good — glad that helped.';
+  } else {
+    document.getElementById('handoffBox').style.display = 'block';
+  }
+}
+
+/* ---------- SCREEN 3: ZONE SETUP ---------- */
+function renderZones(){
+  const list = document.getElementById('zoneList');
+  if (zones.length === 0) {
+    list.innerHTML = '<div style="font-size:.82rem;color:var(--slate);text-align:center;margin-bottom:10px">No places set up yet.</div>';
+    return;
+  }
+  list.innerHTML = zones.map((z, i) =>
+    '<div class="zone-row"><div><div class="zone-name">' + z.name + '</div><div class="zone-radius">' + z.radius + ' mile radius</div>' +
+    (z.tag ? '<div class="zone-tag">' + z.tag + '</div>' : '') +
+    '</div><button class="zone-remove" onclick="removeZone(' + i + ')">Remove</button></div>'
+  ).join('');
+}
+function removeZone(i){
+  zones.splice(i, 1);
+  localStorage.setItem('treoZones', JSON.stringify(zones));
+  renderZones();
+}
+
+let pendingZoneGps = null;
+async function useGpsForZone(){
+  const status = document.getElementById('setupStatus');
+  status.textContent = 'Getting current location...';
+  status.className = '';
+  try {
+    const pos = await getGpsPosition();
+    pendingZoneGps = pos;
+    document.getElementById('zAddress').value = '';
+    document.getElementById('zAddress').placeholder = 'Current location captured (' + pos.lat.toFixed(5) + ', ' + pos.lon.toFixed(5) + ')';
+    status.textContent = 'Location captured. Fill in the rest and save.';
+    status.className = '';
+  } catch (e) {
+    status.textContent = 'Could not get current location: ' + e.message;
+    status.className = 'error';
+  }
+}
+
+async function saveZone(){
+  const name = document.getElementById('zName').value.trim();
+  const addressInput = document.getElementById('zAddress').value.trim();
+  const radius = parseFloat(document.getElementById('zRadius').value);
+  const tag = document.getElementById('zTag').value.trim();
+  const status = document.getElementById('setupStatus');
+
+  if (!name) { status.textContent = 'Enter a name for this place.'; status.className = 'error'; return; }
+  if (isNaN(radius) || radius <= 0) { status.textContent = 'Enter a valid radius in miles.'; status.className = 'error'; return; }
+
+  let lat, lon;
+
+  if (pendingZoneGps) {
+    lat = pendingZoneGps.lat;
+    lon = pendingZoneGps.lon;
+  } else if (addressInput) {
+    status.textContent = 'Looking up that address...';
+    status.className = '';
+    try {
+      const geo = await geocodeAddress(addressInput);
+      if (!geo) {
+        status.textContent = 'Could not find that address. Try adding city/state, or use "Use My Location" instead.';
+        status.className = 'error';
+        return;
+      }
+      lat = geo.lat; lon = geo.lon;
+    } catch (e) {
+      status.textContent = 'Could not reach address lookup (no connection).';
+      status.className = 'error';
+      return;
+    }
+  } else {
+    status.textContent = 'Enter an address or tap "Use My Location."';
+    status.className = 'error';
+    return;
+  }
+
+  zones.push({ name, lat, lon, radius, tag });
+  localStorage.setItem('treoZones', JSON.stringify(zones));
+  renderZones();
+  status.textContent = 'Saved.';
+  status.className = '';
+  document.getElementById('zName').value = '';
+  document.getElementById('zAddress').value = '';
+  document.getElementById('zAddress').placeholder = 'Type an address...';
+  document.getElementById('zTag').value = '';
+  pendingZoneGps = null;
+}
+
+/* ---------- SCREEN 4: SCHEDULE ---------- */
+function renderEvents(){
+  const list = document.getElementById('eventList');
+  if (events.length === 0) {
+    list.innerHTML = '<div style="font-size:.82rem;color:var(--slate);text-align:center;margin-bottom:10px">No events scheduled yet.</div>';
+    return;
+  }
+  const sorted = events.map((e,i) => ({...e, _i:i})).sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
+  list.innerHTML = sorted.map(e =>
+    '<div class="event-row"><div class="event-top"><div><div class="event-title">' + e.title + '</div>' +
+    '<div class="event-when">' + e.date + (e.time ? ' at ' + e.time : '') + '</div>' +
+    (e.address ? '<div class="event-addr">' + e.address + '</div>' : '') +
+    '<div class="event-geo ' + (e.lat != null ? 'geo-ok' : 'geo-bad') + '">' + (e.lat != null ? 'Location found' : 'Location not found - will not match') + '</div>' +
+    '</div><button class="zone-remove" onclick="removeEvent(' + e._i + ')">Remove</button></div></div>'
+  ).join('');
+}
+function removeEvent(i){
+  events.splice(i, 1);
+  localStorage.setItem('treoEvents', JSON.stringify(events));
+  renderEvents();
+}
+
+let pendingEventGps = null;
+async function useGpsForEvent(){
+  const status = document.getElementById('scheduleStatus');
+  status.textContent = 'Getting current location...';
+  status.className = '';
+  try {
+    const pos = await getGpsPosition();
+    pendingEventGps = pos;
+    document.getElementById('eAddress').value = '';
+    document.getElementById('eAddress').placeholder = 'Current location captured (' + pos.lat.toFixed(5) + ', ' + pos.lon.toFixed(5) + ')';
+    status.textContent = 'Location captured. Fill in the rest and save.';
+    status.className = '';
+  } catch (e) {
+    status.textContent = 'Could not get current location: ' + e.message;
+    status.className = 'error';
+  }
+}
+
+async function saveEvent(){
+  const date = document.getElementById('eDate').value;
+  const time = document.getElementById('eTime').value;
+  const title = document.getElementById('eTitle').value.trim();
+  const addressInput = document.getElementById('eAddress').value.trim();
+  const status = document.getElementById('scheduleStatus');
+
+  if (!date) { status.textContent = 'Pick a date.'; status.className = 'error'; return; }
+  if (!title) { status.textContent = 'Enter a title.'; status.className = 'error'; return; }
+
+  let lat = null, lon = null;
+
+  if (pendingEventGps) {
+    lat = pendingEventGps.lat; lon = pendingEventGps.lon;
+  } else if (addressInput) {
+    status.textContent = 'Looking up that address...';
+    status.className = '';
+    try {
+      const geo = await geocodeAddress(addressInput);
+      if (geo) { lat = geo.lat; lon = geo.lon; }
+      else { status.textContent = 'Address not found - event saved, but it will not be recognized by location until fixed.'; status.className = 'error'; }
+    } catch (e) {
+      status.textContent = 'Could not reach address lookup - event saved without a location match for now.';
+      status.className = 'error';
+    }
+  }
+
+  events.push({ date, time, title, address: addressInput, lat, lon });
+  localStorage.setItem('treoEvents', JSON.stringify(events));
+  renderEvents();
+  if (!status.className.includes('error')) { status.textContent = 'Saved.'; status.className = ''; }
+  document.getElementById('eDate').value = '';
+  document.getElementById('eTime').value = '';
+  document.getElementById('eTitle').value = '';
+  document.getElementById('eAddress').value = '';
+  document.getElementById('eAddress').placeholder = 'Address...';
+  pendingEventGps = null;
+}
+
+async function saveBulkEvents(){
+  const raw = document.getElementById('bulkText').value.trim();
+  const status = document.getElementById('bulkStatus');
+  if (!raw) { status.textContent = 'Paste at least one line.'; status.className = 'error'; return; }
+
+  const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  let added = 0, failed = 0;
+
+  for (const line of lines) {
+    const parts = line.split('|').map(p => p.trim());
+    if (parts.length < 3) { failed++; continue; }
+    const [date, time, title, address] = parts;
+    let lat = null, lon = null;
+    if (address) {
+      status.textContent = 'Looking up: ' + title + '...';
+      try {
+        const geo = await geocodeAddress(address);
+        if (geo) { lat = geo.lat; lon = geo.lon; }
+        await new Promise(r => setTimeout(r, 1100)); // be polite to the free lookup service - one request/sec
+      } catch (e) { /* leave lat/lon null, event still gets added */ }
+    }
+    events.push({ date, time: time || '', title: title || 'Untitled', address: address || '', lat, lon });
+    added++;
+  }
+
+  localStorage.setItem('treoEvents', JSON.stringify(events));
+  renderEvents();
+  status.textContent = added + ' event(s) added' + (failed > 0 ? ', ' + failed + ' line(s) could not be read (need at least date | time | title)' : '') + '.';
+  status.className = failed > 0 ? 'error' : '';
+  document.getElementById('bulkText').value = '';
+}
+
+renderZones();
+renderEvents();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch((err) => {
+      console.log('Service worker registration failed (expected if not served over HTTPS):', err);
+    });
+  });
+}
+</script>
+</body>
+</html>
