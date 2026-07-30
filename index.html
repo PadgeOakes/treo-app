@@ -44,6 +44,8 @@ button.gps{background:var(--seafoam);font-size:.82rem;padding:9px}
 .btn-yes{background:var(--seafoam)}
 .btn-no{background:var(--coral)}
 .handoff-box{background:#FEE9DC;border-radius:12px;padding:14px;text-align:center;margin-top:12px;font-size:.88rem;color:var(--ink)}
+.mismatch-box{background:#FEE9DC;border:1.5px solid var(--coral);border-radius:14px;padding:16px;text-align:center;margin-bottom:14px;font-size:1rem;color:var(--ink);line-height:1.5}
+.mismatch-box .mismatch-label{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--coral);display:block;margin-bottom:6px}
 
 .field{margin-bottom:12px;text-align:left}
 .field label{font-size:.74rem;color:var(--slate);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px}
@@ -94,6 +96,7 @@ hr{border:none;border-top:1px solid var(--mist);margin:16px 0}
   <div id="map"></div>
   <div class="ground-msg" id="groundMsg"></div>
   <div class="ground-places" id="groundPlaces"></div>
+  <div class="mismatch-box" id="mismatchBox" style="display:none"></div>
 
   <div id="checkRow" style="display:none">
     <div class="check-row">Does this help?</div>
@@ -167,6 +170,10 @@ hr{border:none;border-top:1px solid var(--mist);margin:16px 0}
       <input type="time" id="eTime" />
     </div>
     <div class="field">
+      <label>Duration (minutes)</label>
+      <input type="text" id="eDuration" placeholder="60" value="60" />
+    </div>
+    <div class="field">
       <label>Title</label>
       <input type="text" id="eTitle" placeholder="e.g. Dr. Alvarez - checkup" />
     </div>
@@ -180,9 +187,9 @@ hr{border:none;border-top:1px solid var(--mist);margin:16px 0}
 
   <div class="tab-panel" id="panelBulk">
     <div class="field">
-      <label>Paste events — one per line: date | time | title | address</label>
-      <textarea id="bulkText" placeholder="2026-07-28 | 14:00 | Dr. Alvarez checkup | 123 Main St, Santa Cruz, CA
-2026-07-30 | 09:30 | Physio | 456 Ocean Ave, Santa Cruz, CA"></textarea>
+      <label>Paste events — one per line: date | time | title | address | duration (minutes, optional - defaults to 60)</label>
+      <textarea id="bulkText" placeholder="2026-07-28 | 14:00 | Dr. Alvarez checkup | 123 Main St, Santa Cruz, CA | 60
+2026-07-30 | 09:30 | Physio | 456 Ocean Ave, Santa Cruz, CA | 45"></textarea>
     </div>
     <div id="bulkStatus" style="font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px"></div>
     <button onclick="saveBulkEvents()">Add All</button>
@@ -228,13 +235,36 @@ function findMatchingZone(lat, lon){
   }
   return null;
 }
-function findMatchingEvent(lat, lon){
-  const todayStr = new Date().toISOString().slice(0,10);
-  const todays = events.filter(e => e.date === todayStr && e.lat != null && e.lon != null);
-  for (const e of todays) {
-    if (haversineDistance(lat, lon, e.lat, e.lon) <= SCHEDULE_MATCH_RADIUS) return e;
-  }
-  return null;
+
+const EVENT_GRACE_MINUTES = 15; // window opens 15 min before start, stays open 15 min after the event's duration ends
+
+function timeStrToMinutes(t){
+  if (!t) return null;
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+// Is this event's scheduled window active right now, regardless of where the person actually is?
+function isEventActiveNow(e){
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0,10);
+  if (e.date !== todayStr) return false;
+  if (!e.time) return true; // no time specified - treat as active all day once the date matches
+  const startMin = timeStrToMinutes(e.time);
+  const duration = (e.duration != null && e.duration !== '') ? Number(e.duration) : 60;
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  return nowMin >= (startMin - EVENT_GRACE_MINUTES) && nowMin <= (startMin + duration + EVENT_GRACE_MINUTES);
+}
+
+// Find today's event(s) whose time window is active right now (time-based, not location-based).
+function findActiveEvents(){
+  return events.filter(isEventActiveNow);
+}
+
+// Does the current location match a specific event's saved address?
+function locationMatchesEvent(lat, lon, e){
+  if (e.lat == null || e.lon == null) return false;
+  return haversineDistance(lat, lon, e.lat, e.lon) <= SCHEDULE_MATCH_RADIUS;
 }
 
 async function tryGeocode(query){
@@ -279,6 +309,7 @@ function goToHelp(){
   document.getElementById('handoffBox').style.display = 'none';
   document.getElementById('groundMsg').textContent = '';
   document.getElementById('groundPlaces').textContent = '';
+  document.getElementById('mismatchBox').style.display = 'none';
   const status = document.getElementById('groundStatus');
   status.textContent = 'Locating...';
   status.className = 'ground-status';
@@ -303,46 +334,70 @@ function renderGrounding(){
   const status = document.getElementById('groundStatus');
   const msg = document.getElementById('groundMsg');
   const places = document.getElementById('groundPlaces');
+  const mismatchBox = document.getElementById('mismatchBox');
   const now = new Date();
   const dayName = now.toLocaleDateString('en-US', { weekday: 'long' });
   const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   status.textContent = dayName + ', ' + timeStr;
+  mismatchBox.style.display = 'none';
+  mismatchBox.textContent = '';
 
-  // Schedule match takes priority over a general saved zone - it's more specific
-  const matchedEvent = findMatchingEvent(currentLat, currentLon);
   const matchedZone = findMatchingZone(currentLat, currentLon);
+  const activeEvents = findActiveEvents();
+  // Among today's time-active events, is there one whose actual address matches where the person is right now?
+  const activeEventHere = activeEvents.find(e => locationMatchesEvent(currentLat, currentLon, e));
+  // An active event that is NOT where the person currently is - the real bug case.
+  const activeEventElsewhere = activeEvents.find(e => !locationMatchesEvent(currentLat, currentLon, e));
 
-  if (matchedEvent) {
-    const timeLabel = matchedEvent.time ? ' (' + matchedEvent.time + ')' : '';
-    msg.textContent = "You're at your appointment: " + matchedEvent.title + timeLabel + '.';
-    places.textContent = matchedEvent.address || '';
+  if (activeEventHere) {
+    const timeLabel = activeEventHere.time ? ' (' + activeEventHere.time + ')' : '';
+    msg.textContent = "You're at your appointment: " + activeEventHere.title + timeLabel + '.';
+    places.textContent = activeEventHere.address || '';
   } else if (matchedZone) {
     msg.textContent = "You're at " + matchedZone.name + '.';
     places.textContent = matchedZone.tag || '';
   } else {
-    msg.textContent = "You're not at one of your saved places or today's scheduled events right now.";
+    msg.textContent = "You're not at one of your saved places right now.";
     places.textContent = '';
   }
 
-  drawMap(matchedZone, matchedEvent);
+  // Flag it clearly if there's a scheduled event happening right now that doesn't match where the person actually is -
+  // this is the case that matters most: don't just report the current zone and stay silent about a missed appointment.
+  if (activeEventElsewhere) {
+    const timeLabel = activeEventElsewhere.time ? ' at ' + activeEventElsewhere.time : '';
+    const whereNow = matchedZone ? matchedZone.name : "a location that doesn't match a saved place";
+    mismatchBox.innerHTML = '<span class="mismatch-label">Scheduled now, different place</span>You have <strong>' + activeEventElsewhere.title + '</strong>' + timeLabel +
+      (activeEventElsewhere.address ? ' at ' + activeEventElsewhere.address : '') +
+      ' — but it looks like you\'re at ' + whereNow + '.';
+    mismatchBox.style.display = 'block';
+  }
+
+  drawMap(matchedZone, activeEventHere, activeEventElsewhere);
   document.getElementById('checkRow').style.display = 'block';
 }
 
-function drawMap(matchedZone, matchedEvent){
+function drawMap(matchedZone, matchedEvent, mismatchEvent){
   if (!leafletMap) {
     leafletMap = L.map('map', { zoomControl: false, attributionControl: false });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(leafletMap);
   }
-  const matched = matchedEvent || matchedZone;
-  leafletMap.setView([currentLat, currentLon], matched ? 15 : 13);
   if (userMarker) leafletMap.removeLayer(userMarker);
   userMarker = L.circleMarker([currentLat, currentLon], { radius: 8, color: '#0B4F6C', fillColor: '#0B4F6C', fillOpacity: 1 }).addTo(leafletMap);
 
   if (zoneMarker) { leafletMap.removeLayer(zoneMarker); zoneMarker = null; }
-  if (matchedEvent) {
+
+  if (mismatchEvent && mismatchEvent.lat != null) {
+    // Show both where they are AND where they're supposed to be, so neither is off-screen.
+    zoneMarker = L.circle([mismatchEvent.lat, mismatchEvent.lon], { radius: SCHEDULE_MATCH_RADIUS * 1609.34, color: '#D95F3B', fillColor: '#D95F3B', fillOpacity: 0.2 }).addTo(leafletMap);
+    leafletMap.fitBounds([[currentLat, currentLon], [mismatchEvent.lat, mismatchEvent.lon]], { padding: [30, 30] });
+  } else if (matchedEvent) {
     zoneMarker = L.circle([matchedEvent.lat, matchedEvent.lon], { radius: SCHEDULE_MATCH_RADIUS * 1609.34, color: '#C89A3C', fillColor: '#C89A3C', fillOpacity: 0.15 }).addTo(leafletMap);
+    leafletMap.setView([currentLat, currentLon], 15);
   } else if (matchedZone) {
     zoneMarker = L.circle([matchedZone.lat, matchedZone.lon], { radius: matchedZone.radius * 1609.34, color: '#1A8A76', fillColor: '#1A8A76', fillOpacity: 0.15 }).addTo(leafletMap);
+    leafletMap.setView([currentLat, currentLon], 15);
+  } else {
+    leafletMap.setView([currentLat, currentLon], 13);
   }
   setTimeout(() => leafletMap.invalidateSize(), 200);
 }
@@ -450,13 +505,15 @@ function renderEvents(){
     return;
   }
   const sorted = events.map((e,i) => ({...e, _i:i})).sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
-  list.innerHTML = sorted.map(e =>
-    '<div class="event-row"><div class="event-top"><div><div class="event-title">' + e.title + '</div>' +
-    '<div class="event-when">' + e.date + (e.time ? ' at ' + e.time : '') + '</div>' +
+  list.innerHTML = sorted.map(e => {
+    const dur = (e.duration != null && e.duration !== '') ? e.duration : 60;
+    const endLabel = e.time ? ' (' + dur + ' min)' : '';
+    return '<div class="event-row"><div class="event-top"><div><div class="event-title">' + e.title + '</div>' +
+    '<div class="event-when">' + e.date + (e.time ? ' at ' + e.time : '') + endLabel + '</div>' +
     (e.address ? '<div class="event-addr">' + e.address + '</div>' : '') +
     '<div class="event-geo ' + (e.lat != null ? 'geo-ok' : 'geo-bad') + '">' + (e.lat != null ? 'Location found' : 'Location not found - will not match') + '</div>' +
-    '</div><button class="zone-remove" onclick="removeEvent(' + e._i + ')">Remove</button></div></div>'
-  ).join('');
+    '</div><button class="zone-remove" onclick="removeEvent(' + e._i + ')">Remove</button></div></div>';
+  }).join('');
 }
 function removeEvent(i){
   events.splice(i, 1);
@@ -485,6 +542,8 @@ async function useGpsForEvent(){
 async function saveEvent(){
   const date = document.getElementById('eDate').value;
   const time = document.getElementById('eTime').value;
+  const durationInput = document.getElementById('eDuration').value.trim();
+  const duration = durationInput ? parseInt(durationInput, 10) : 60;
   const title = document.getElementById('eTitle').value.trim();
   const addressInput = document.getElementById('eAddress').value.trim();
   const status = document.getElementById('scheduleStatus');
@@ -509,12 +568,13 @@ async function saveEvent(){
     }
   }
 
-  events.push({ date, time, title, address: addressInput, lat, lon });
+  events.push({ date, time, duration, title, address: addressInput, lat, lon });
   localStorage.setItem('treoEvents', JSON.stringify(events));
   renderEvents();
   if (!status.className.includes('error')) { status.textContent = 'Saved.'; status.className = ''; }
   document.getElementById('eDate').value = '';
   document.getElementById('eTime').value = '';
+  document.getElementById('eDuration').value = '60';
   document.getElementById('eTitle').value = '';
   document.getElementById('eAddress').value = '';
   document.getElementById('eAddress').placeholder = 'Address...';
@@ -532,7 +592,8 @@ async function saveBulkEvents(){
   for (const line of lines) {
     const parts = line.split('|').map(p => p.trim());
     if (parts.length < 3) { failed++; continue; }
-    const [date, time, title, address] = parts;
+    const [date, time, title, address, durationRaw] = parts;
+    const duration = durationRaw ? parseInt(durationRaw, 10) : 60;
     let lat = null, lon = null;
     if (address) {
       status.textContent = 'Looking up: ' + title + '...';
@@ -542,7 +603,7 @@ async function saveBulkEvents(){
         await new Promise(r => setTimeout(r, 1100)); // be polite to the free lookup service - one request/sec
       } catch (e) { /* leave lat/lon null, event still gets added */ }
     }
-    events.push({ date, time: time || '', title: title || 'Untitled', address: address || '', lat, lon });
+    events.push({ date, time: time || '', duration, title: title || 'Untitled', address: address || '', lat, lon });
     added++;
   }
 
