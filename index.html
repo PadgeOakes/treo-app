@@ -86,6 +86,7 @@ hr{border:none;border-top:1px solid var(--mist);margin:16px 0}
     <button class="big-help" onclick="goToHelp()">I Need Help</button>
     <button class="link" onclick="goToSetup()">Set Up My Places</button>
     <button class="link" onclick="goToSchedule()">My Schedule</button>
+    <button class="link" onclick="goToContacts()">My Contacts</button>
   </div>
 </div>
 
@@ -97,6 +98,14 @@ hr{border:none;border-top:1px solid var(--mist);margin:16px 0}
   <div class="ground-msg" id="groundMsg"></div>
   <div class="ground-places" id="groundPlaces"></div>
   <div class="mismatch-box" id="mismatchBox" style="display:none"></div>
+
+  <div id="guessRow" style="display:none">
+    <div class="check-row" id="guessLabel"></div>
+    <div class="orient-buttons">
+      <button class="btn-yes" onclick="guessResponse(true)">Yes</button>
+      <button class="btn-no" onclick="guessResponse(false)">No</button>
+    </div>
+  </div>
 
   <div id="checkRow" style="display:none">
     <div class="check-row">Does this help?</div>
@@ -136,8 +145,13 @@ hr{border:none;border-top:1px solid var(--mist);margin:16px 0}
     <input type="text" id="zRadius" placeholder="0.25" value="0.25" />
   </div>
   <div class="field">
-    <label>What's here / when (optional)</label>
+    <label>What's here / when (optional, general note)</label>
     <input type="text" id="zTag" placeholder="e.g. Ace Hardware, Pet Store, Safeway — Wed/Sat mornings" />
+  </div>
+  <div class="field">
+    <label>Specific destinations here (optional) — one per line: name | morning/afternoon/evening/night/anytime</label>
+    <textarea id="zDestinations" placeholder="7-Eleven | morning
+Pizza place | evening"></textarea>
   </div>
   <div id="setupStatus" style="font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px"></div>
   <button onclick="saveZone()">Save Place</button>
@@ -199,9 +213,45 @@ hr{border:none;border-top:1px solid var(--mist);margin:16px 0}
   <button class="secondary" onclick="goHome()">&larr; Back</button>
 </div>
 
+<!-- SCREEN 5: CONTACTS -->
+<div class="card screen" id="screen-contacts">
+  <h1>My Contacts</h1>
+  <div class="subtitle">People Treo can suggest when nearby</div>
+
+  <div id="contactList"></div>
+
+  <hr>
+
+  <div class="field">
+    <label>Name</label>
+    <input type="text" id="cName" placeholder="e.g. Sarah" />
+  </div>
+  <div class="gps-row">
+    <input type="text" id="cAddress" placeholder="Address..." />
+    <button class="gps" onclick="useGpsForContact()">Use My Location</button>
+  </div>
+  <div class="field">
+    <label><input type="checkbox" id="cRoutine" checked style="width:auto;margin-right:6px" />Visited routinely (Treo will suggest them when nearby)</label>
+  </div>
+  <div id="contactStatus" style="font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px"></div>
+  <button onclick="saveContact()">Save Contact</button>
+
+  <hr>
+  <div class="field">
+    <label>Paste several — one per line: name | address | routine (yes/no)</label>
+    <textarea id="bulkContactText" placeholder="Sarah | 45 Archer St, Santa Cruz, CA | yes"></textarea>
+  </div>
+  <div id="bulkContactStatus" style="font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px"></div>
+  <button onclick="saveBulkContacts()">Add All</button>
+
+  <hr>
+  <button class="secondary" onclick="goHome()">&larr; Back</button>
+</div>
+
 <script>
 let zones = JSON.parse(localStorage.getItem('treoZones') || '[]');
 let events = JSON.parse(localStorage.getItem('treoEvents') || '[]');
+let contacts = JSON.parse(localStorage.getItem('treoContacts') || '[]');
 let currentLat = null, currentLon = null;
 let leafletMap = null, userMarker = null, zoneMarker = null;
 const SCHEDULE_MATCH_RADIUS = 0.15; // miles - tighter than a general zone, since it's a specific appointment address
@@ -213,6 +263,7 @@ function showScreen(id){
 function goHome(){ showScreen('screen-home'); }
 function goToSetup(){ renderZones(); showScreen('screen-setup'); }
 function goToSchedule(){ renderEvents(); showScreen('screen-schedule'); }
+function goToContacts(){ renderContacts(); showScreen('screen-contacts'); }
 
 function switchTab(which){
   document.getElementById('tabSingle').classList.toggle('active', which==='single');
@@ -267,6 +318,38 @@ function locationMatchesEvent(lat, lon, e){
   return haversineDistance(lat, lon, e.lat, e.lon) <= SCHEDULE_MATCH_RADIUS;
 }
 
+const CONTACT_MATCH_RADIUS = 0.2; // miles - how close counts as "near" a contact's address
+
+function getTimeOfDayBucket(){
+  const h = new Date().getHours();
+  if (h >= 5 && h < 11) return 'morning';
+  if (h >= 11 && h < 17) return 'afternoon';
+  if (h >= 17 && h < 21) return 'evening';
+  return 'night';
+}
+
+// Given a matched zone with structured destinations, pick the single best guess for right now.
+// Prefers a destination whose pattern matches the current time-of-day bucket; falls back to
+// an "anytime" destination; returns null if the zone has no structured destinations at all.
+function pickBestDestination(zone){
+  if (!zone.destinations || zone.destinations.length === 0) return null;
+  const bucket = getTimeOfDayBucket();
+  const timeMatch = zone.destinations.find(d => d.pattern === bucket);
+  if (timeMatch) return timeMatch;
+  const anytime = zone.destinations.find(d => d.pattern === 'anytime' || !d.pattern);
+  if (anytime) return anytime;
+  return zone.destinations[0]; // last resort - still a better guess than nothing
+}
+
+// Find a routine contact whose saved address is near the current location.
+function findRoutineContactNearby(lat, lon){
+  const routineContacts = contacts.filter(c => c.routine && c.lat != null && c.lon != null);
+  for (const c of routineContacts) {
+    if (haversineDistance(lat, lon, c.lat, c.lon) <= CONTACT_MATCH_RADIUS) return c;
+  }
+  return null;
+}
+
 async function tryGeocode(query){
   const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(query));
   const data = await res.json();
@@ -303,13 +386,19 @@ function getGpsPosition(){
 }
 
 /* ---------- SCREEN 2: HELP FLOW ---------- */
+let cascadeStage = null; // null | 'destination' | 'contact'
+let currentGuessTarget = null;
+
 function goToHelp(){
   showScreen('screen-help');
   document.getElementById('checkRow').style.display = 'none';
+  document.getElementById('guessRow').style.display = 'none';
   document.getElementById('handoffBox').style.display = 'none';
   document.getElementById('groundMsg').textContent = '';
   document.getElementById('groundPlaces').textContent = '';
   document.getElementById('mismatchBox').style.display = 'none';
+  cascadeStage = null;
+  currentGuessTarget = null;
   const status = document.getElementById('groundStatus');
   status.textContent = 'Locating...';
   status.className = 'ground-status';
@@ -330,6 +419,14 @@ function goToHelp(){
   }, { enableHighAccuracy: true, timeout: 10000 });
 }
 
+function showGuess(stage, target, label){
+  cascadeStage = stage;
+  currentGuessTarget = target;
+  document.getElementById('checkRow').style.display = 'none';
+  document.getElementById('guessLabel').textContent = label;
+  document.getElementById('guessRow').style.display = 'block';
+}
+
 function renderGrounding(){
   const status = document.getElementById('groundStatus');
   const msg = document.getElementById('groundMsg');
@@ -341,12 +438,13 @@ function renderGrounding(){
   status.textContent = dayName + ', ' + timeStr;
   mismatchBox.style.display = 'none';
   mismatchBox.textContent = '';
+  document.getElementById('guessRow').style.display = 'none';
+  cascadeStage = null;
+  currentGuessTarget = null;
 
   const matchedZone = findMatchingZone(currentLat, currentLon);
   const activeEvents = findActiveEvents();
-  // Among today's time-active events, is there one whose actual address matches where the person is right now?
   const activeEventHere = activeEvents.find(e => locationMatchesEvent(currentLat, currentLon, e));
-  // An active event that is NOT where the person currently is - the real bug case.
   const activeEventElsewhere = activeEvents.find(e => !locationMatchesEvent(currentLat, currentLon, e));
 
   if (activeEventHere) {
@@ -361,8 +459,6 @@ function renderGrounding(){
     places.textContent = '';
   }
 
-  // Flag it clearly if there's a scheduled event happening right now that doesn't match where the person actually is -
-  // this is the case that matters most: don't just report the current zone and stay silent about a missed appointment.
   if (activeEventElsewhere) {
     const timeLabel = activeEventElsewhere.time ? ' at ' + activeEventElsewhere.time : '';
     const whereNow = matchedZone ? matchedZone.name : "a location that doesn't match a saved place";
@@ -373,6 +469,53 @@ function renderGrounding(){
   }
 
   drawMap(matchedZone, activeEventHere, activeEventElsewhere);
+
+  // Cascade: an active scheduled event always takes priority and just uses the plain Yes/No below.
+  // Otherwise, try a ranked guess - best destination within a matched zone first, then a nearby routine contact.
+  if (activeEventHere || activeEventElsewhere) {
+    document.getElementById('checkRow').style.display = 'block';
+    return;
+  }
+
+  if (matchedZone) {
+    const bestDest = pickBestDestination(matchedZone);
+    if (bestDest) {
+      showGuess('destination', bestDest, 'Are you going to ' + bestDest.name + '?');
+      return;
+    }
+  } else {
+    const nearbyContact = findRoutineContactNearby(currentLat, currentLon);
+    if (nearbyContact) {
+      showGuess('contact', nearbyContact, 'Are you going to visit ' + nearbyContact.name + '?');
+      return;
+    }
+  }
+
+  document.getElementById('checkRow').style.display = 'block';
+}
+
+function guessResponse(yes){
+  document.getElementById('guessRow').style.display = 'none';
+
+  if (yes) {
+    document.getElementById('groundStatus').textContent = 'Good — glad that helped.';
+    cascadeStage = null;
+    currentGuessTarget = null;
+    return;
+  }
+
+  // "No" narrows it down rather than dead-ending - fall to the next tier.
+  if (cascadeStage === 'destination') {
+    const nearbyContact = findRoutineContactNearby(currentLat, currentLon);
+    if (nearbyContact) {
+      showGuess('contact', nearbyContact, 'Are you going to visit ' + nearbyContact.name + '?');
+      return;
+    }
+  }
+
+  // No more tiers left - fall to the plain Does this help? on the base message already shown.
+  cascadeStage = null;
+  currentGuessTarget = null;
   document.getElementById('checkRow').style.display = 'block';
 }
 
@@ -418,11 +561,14 @@ function renderZones(){
     list.innerHTML = '<div style="font-size:.82rem;color:var(--slate);text-align:center;margin-bottom:10px">No places set up yet.</div>';
     return;
   }
-  list.innerHTML = zones.map((z, i) =>
-    '<div class="zone-row"><div><div class="zone-name">' + z.name + '</div><div class="zone-radius">' + z.radius + ' mile radius</div>' +
-    (z.tag ? '<div class="zone-tag">' + z.tag + '</div>' : '') +
-    '</div><button class="zone-remove" onclick="removeZone(' + i + ')">Remove</button></div>'
-  ).join('');
+  list.innerHTML = zones.map((z, i) => {
+    const destLine = (z.destinations && z.destinations.length)
+      ? '<div class="zone-tag">' + z.destinations.map(d => d.name + ' (' + d.pattern + ')').join(', ') + '</div>'
+      : '';
+    return '<div class="zone-row"><div><div class="zone-name">' + z.name + '</div><div class="zone-radius">' + z.radius + ' mile radius</div>' +
+    (z.tag ? '<div class="zone-tag">' + z.tag + '</div>' : '') + destLine +
+    '</div><button class="zone-remove" onclick="removeZone(' + i + ')">Remove</button></div>';
+  }).join('');
 }
 function removeZone(i){
   zones.splice(i, 1);
@@ -446,6 +592,19 @@ async function useGpsForZone(){
     status.textContent = 'Could not get current location: ' + e.message;
     status.className = 'error';
   }
+}
+
+function parseDestinationsInput(){
+  const raw = document.getElementById('zDestinations').value.trim();
+  if (!raw) return [];
+  const validPatterns = ['morning', 'afternoon', 'evening', 'night', 'anytime'];
+  return raw.split('\n').map(l => l.trim()).filter(l => l).map(line => {
+    const parts = line.split('|').map(p => p.trim());
+    const name = parts[0] || line;
+    let pattern = (parts[1] || 'anytime').toLowerCase();
+    if (!validPatterns.includes(pattern)) pattern = 'anytime';
+    return { name, pattern };
+  });
 }
 
 async function saveZone(){
@@ -485,7 +644,7 @@ async function saveZone(){
     return;
   }
 
-  zones.push({ name, lat, lon, radius, tag });
+  zones.push({ name, lat, lon, radius, tag, destinations: parseDestinationsInput() });
   localStorage.setItem('treoZones', JSON.stringify(zones));
   renderZones();
   status.textContent = 'Saved.';
@@ -494,6 +653,7 @@ async function saveZone(){
   document.getElementById('zAddress').value = '';
   document.getElementById('zAddress').placeholder = 'Type an address...';
   document.getElementById('zTag').value = '';
+  document.getElementById('zDestinations').value = '';
   pendingZoneGps = null;
 }
 
@@ -614,8 +774,114 @@ async function saveBulkEvents(){
   document.getElementById('bulkText').value = '';
 }
 
+/* ---------- SCREEN 5: CONTACTS ---------- */
+function renderContacts(){
+  const list = document.getElementById('contactList');
+  if (contacts.length === 0) {
+    list.innerHTML = '<div style="font-size:.82rem;color:var(--slate);text-align:center;margin-bottom:10px">No contacts saved yet.</div>';
+    return;
+  }
+  list.innerHTML = contacts.map((c, i) =>
+    '<div class="zone-row"><div><div class="zone-name">' + c.name + '</div>' +
+    (c.address ? '<div class="zone-radius">' + c.address + '</div>' : '') +
+    '<div class="zone-tag">' + (c.routine ? 'Visited routinely' : 'Occasional') + (c.lat == null ? ' - location not found' : '') + '</div>' +
+    '</div><button class="zone-remove" onclick="removeContact(' + i + ')">Remove</button></div>'
+  ).join('');
+}
+function removeContact(i){
+  contacts.splice(i, 1);
+  localStorage.setItem('treoContacts', JSON.stringify(contacts));
+  renderContacts();
+}
+
+let pendingContactGps = null;
+async function useGpsForContact(){
+  const status = document.getElementById('contactStatus');
+  status.textContent = 'Getting current location...';
+  status.className = '';
+  try {
+    const pos = await getGpsPosition();
+    pendingContactGps = pos;
+    document.getElementById('cAddress').value = '';
+    document.getElementById('cAddress').placeholder = 'Current location captured (' + pos.lat.toFixed(5) + ', ' + pos.lon.toFixed(5) + ')';
+    status.textContent = 'Location captured. Fill in the rest and save.';
+    status.className = '';
+  } catch (e) {
+    status.textContent = 'Could not get current location: ' + e.message;
+    status.className = 'error';
+  }
+}
+
+async function saveContact(){
+  const name = document.getElementById('cName').value.trim();
+  const addressInput = document.getElementById('cAddress').value.trim();
+  const routine = document.getElementById('cRoutine').checked;
+  const status = document.getElementById('contactStatus');
+
+  if (!name) { status.textContent = 'Enter a name.'; status.className = 'error'; return; }
+
+  let lat = null, lon = null;
+  if (pendingContactGps) {
+    lat = pendingContactGps.lat; lon = pendingContactGps.lon;
+  } else if (addressInput) {
+    status.textContent = 'Looking up that address...';
+    status.className = '';
+    try {
+      const geo = await geocodeAddress(addressInput);
+      if (geo) { lat = geo.lat; lon = geo.lon; }
+      else { status.textContent = 'Address not found - saved, but will not be recognized by location until fixed.'; status.className = 'error'; }
+    } catch (e) {
+      status.textContent = 'Could not reach address lookup - saved without a location match for now.';
+      status.className = 'error';
+    }
+  }
+
+  contacts.push({ name, address: addressInput, routine, lat, lon });
+  localStorage.setItem('treoContacts', JSON.stringify(contacts));
+  renderContacts();
+  if (!status.className.includes('error')) { status.textContent = 'Saved.'; status.className = ''; }
+  document.getElementById('cName').value = '';
+  document.getElementById('cAddress').value = '';
+  document.getElementById('cAddress').placeholder = 'Address...';
+  pendingContactGps = null;
+}
+
+async function saveBulkContacts(){
+  const raw = document.getElementById('bulkContactText').value.trim();
+  const status = document.getElementById('bulkContactStatus');
+  if (!raw) { status.textContent = 'Paste at least one line.'; status.className = 'error'; return; }
+
+  const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  let added = 0, failed = 0;
+
+  for (const line of lines) {
+    const parts = line.split('|').map(p => p.trim());
+    if (parts.length < 1 || !parts[0]) { failed++; continue; }
+    const [name, address, routineRaw] = parts;
+    const routine = !routineRaw || routineRaw.toLowerCase().startsWith('y');
+    let lat = null, lon = null;
+    if (address) {
+      status.textContent = 'Looking up: ' + name + '...';
+      try {
+        const geo = await geocodeAddress(address);
+        if (geo) { lat = geo.lat; lon = geo.lon; }
+        await new Promise(r => setTimeout(r, 1100));
+      } catch (e) { /* leave lat/lon null, contact still gets added */ }
+    }
+    contacts.push({ name, address: address || '', routine, lat, lon });
+    added++;
+  }
+
+  localStorage.setItem('treoContacts', JSON.stringify(contacts));
+  renderContacts();
+  status.textContent = added + ' contact(s) added' + (failed > 0 ? ', ' + failed + ' line(s) could not be read (need at least a name)' : '') + '.';
+  status.className = failed > 0 ? 'error' : '';
+  document.getElementById('bulkContactText').value = '';
+}
+
 renderZones();
 renderEvents();
+renderContacts();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
