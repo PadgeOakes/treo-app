@@ -87,6 +87,7 @@ hr{border:none;border-top:1px solid var(--mist);margin:16px 0}
     <button class="link" onclick="goToSetup()">Set Up My Places</button>
     <button class="link" onclick="goToSchedule()">My Schedule</button>
     <button class="link" onclick="goToContacts()">My Contacts</button>
+    <button class="link" onclick="loadTestData()">Reload Test Data (Jennifer)</button>
   </div>
 </div>
 
@@ -252,6 +253,45 @@ Pizza place | evening"></textarea>
 let zones = JSON.parse(localStorage.getItem('treoZones') || '[]');
 let events = JSON.parse(localStorage.getItem('treoEvents') || '[]');
 let contacts = JSON.parse(localStorage.getItem('treoContacts') || '[]');
+
+// Auto-load the "Patient Jennifer" test fixture the very first time this loads on a device,
+// so testing doesn't require re-pasting data into the forms every session. Only seeds when
+// everything is genuinely empty - never overwrites real data once anything has been added.
+function seedTestDataIfEmpty(){
+  if (zones.length > 0 || events.length > 0 || contacts.length > 0) return;
+  zones = [{
+    name: 'Corner Plaza', lat: 36.9700, lon: -122.0225, radius: 0.15,
+    tag: 'Test fixture - Patient Jennifer',
+    destinations: [
+      { name: '7-Eleven', pattern: 'morning' },
+      { name: 'Pizza place', pattern: 'evening' }
+    ]
+  }];
+  contacts = [{
+    name: 'Sarah', address: '45 Archer St, Santa Cruz, CA', lat: 36.9720, lon: -122.0200, routine: true
+  }];
+  localStorage.setItem('treoZones', JSON.stringify(zones));
+  localStorage.setItem('treoContacts', JSON.stringify(contacts));
+}
+seedTestDataIfEmpty();
+
+// Manual reset - reloads the Jennifer test fixture regardless of current state, for repeat testing.
+function loadTestData(){
+  zones = [{
+    name: 'Corner Plaza', lat: 36.9700, lon: -122.0225, radius: 0.15,
+    tag: 'Test fixture - Patient Jennifer',
+    destinations: [
+      { name: '7-Eleven', pattern: 'morning' },
+      { name: 'Pizza place', pattern: 'evening' }
+    ]
+  }];
+  contacts = [{
+    name: 'Sarah', address: '45 Archer St, Santa Cruz, CA', lat: 36.9720, lon: -122.0200, routine: true
+  }];
+  localStorage.setItem('treoZones', JSON.stringify(zones));
+  localStorage.setItem('treoContacts', JSON.stringify(contacts));
+  alert('Test data reloaded: Corner Plaza (7-Eleven/morning, Pizza place/evening) and Sarah (routine contact) are set.');
+}
 let currentLat = null, currentLon = null;
 let leafletMap = null, userMarker = null, zoneMarker = null;
 const SCHEDULE_MATCH_RADIUS = 0.15; // miles - tighter than a general zone, since it's a specific appointment address
