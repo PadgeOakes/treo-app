@@ -88,6 +88,7 @@ hr{border:none;border-top:1px solid var(--mist);margin:16px 0}
     <button class="link" onclick="goToSchedule()">My Schedule</button>
     <button class="link" onclick="goToContacts()">My Contacts</button>
     <button class="link" onclick="loadTestData()">Reload Test Data (Jennifer)</button>
+    <button class="link" onclick="goToImport()">Import a Profile</button>
   </div>
 </div>
 
@@ -102,6 +103,7 @@ hr{border:none;border-top:1px solid var(--mist);margin:16px 0}
 
   <div id="guessRow" style="display:none">
     <div class="check-row" id="guessLabel"></div>
+    <a id="guessCallLink" href="#" style="display:none;text-align:center;font-size:.85rem;color:var(--ocean);font-weight:600;text-decoration:underline;margin-bottom:8px">Call</a>
     <div class="orient-buttons">
       <button class="btn-yes" onclick="guessResponse(true)">Yes</button>
       <button class="btn-no" onclick="guessResponse(false)">No</button>
@@ -232,6 +234,10 @@ Pizza place | evening"></textarea>
     <button class="gps" onclick="useGpsForContact()">Use My Location</button>
   </div>
   <div class="field">
+    <label>Phone (optional — lets Treo offer a direct call)</label>
+    <input type="tel" id="cPhone" placeholder="e.g. 831-555-0100" />
+  </div>
+  <div class="field">
     <label><input type="checkbox" id="cRoutine" checked style="width:auto;margin-right:6px" />Visited routinely (Treo will suggest them when nearby)</label>
   </div>
   <div id="contactStatus" style="font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px"></div>
@@ -239,11 +245,27 @@ Pizza place | evening"></textarea>
 
   <hr>
   <div class="field">
-    <label>Paste several — one per line: name | address | routine (yes/no)</label>
-    <textarea id="bulkContactText" placeholder="Sarah | 45 Archer St, Santa Cruz, CA | yes"></textarea>
+    <label>Paste several — one per line: name | address | routine (yes/no) | phone (optional)</label>
+    <textarea id="bulkContactText" placeholder="Sarah | 45 Archer St, Santa Cruz, CA | yes | 831-555-0100"></textarea>
   </div>
   <div id="bulkContactStatus" style="font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px"></div>
   <button onclick="saveBulkContacts()">Add All</button>
+
+  <hr>
+  <button class="secondary" onclick="goHome()">&larr; Back</button>
+</div>
+
+<!-- SCREEN 6: IMPORT PROFILE -->
+<div class="card screen" id="screen-import">
+  <h1>Import a Profile</h1>
+  <div class="subtitle">Paste a profile exported from the Treo Intake tool</div>
+
+  <div class="field">
+    <label>Paste the exported JSON here</label>
+    <textarea id="importText" style="min-height:180px" placeholder='{"userName": "...", "treoZones": [...], "treoEvents": [...], "treoContacts": [...]}'></textarea>
+  </div>
+  <div id="importStatus" style="font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px"></div>
+  <button onclick="importProfile()">Import — Replace Current Data</button>
 
   <hr>
   <button class="secondary" onclick="goHome()">&larr; Back</button>
@@ -275,6 +297,29 @@ function seedTestDataIfEmpty(){
 }
 seedTestDataIfEmpty();
 
+function importProfile(){
+  const raw = document.getElementById('importText').value.trim();
+  const status = document.getElementById('importStatus');
+  if (!raw) { status.textContent = 'Paste an exported profile first.'; status.className = 'error'; return; }
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    status.textContent = 'That doesn\'t look like valid JSON - check it was copied in full.';
+    status.className = 'error';
+    return;
+  }
+  zones = Array.isArray(data.treoZones) ? data.treoZones : [];
+  events = Array.isArray(data.treoEvents) ? data.treoEvents : [];
+  contacts = Array.isArray(data.treoContacts) ? data.treoContacts : [];
+  localStorage.setItem('treoZones', JSON.stringify(zones));
+  localStorage.setItem('treoEvents', JSON.stringify(events));
+  localStorage.setItem('treoContacts', JSON.stringify(contacts));
+  renderZones(); renderEvents(); renderContacts();
+  status.textContent = 'Imported: ' + zones.length + ' place(s), ' + events.length + ' event(s), ' + contacts.length + ' contact(s). This replaced whatever was there before.';
+  status.className = '';
+}
+
 // Manual reset - reloads the Jennifer test fixture regardless of current state, for repeat testing.
 function loadTestData(){
   zones = [{
@@ -304,6 +349,7 @@ function goHome(){ showScreen('screen-home'); }
 function goToSetup(){ renderZones(); showScreen('screen-setup'); }
 function goToSchedule(){ renderEvents(); showScreen('screen-schedule'); }
 function goToContacts(){ renderContacts(); showScreen('screen-contacts'); }
+function goToImport(){ showScreen('screen-import'); }
 
 function switchTab(which){
   document.getElementById('tabSingle').classList.toggle('active', which==='single');
@@ -390,6 +436,17 @@ function findRoutineContactNearby(lat, lon){
   return null;
 }
 
+// Widen to ANY known contact nearby, routine or not - a "No" on the routine guess is itself
+// meaningful information, so it shouldn't dead-end just because the next-closest person is
+// only visited occasionally. excludeName keeps this from re-suggesting whoever was just declined.
+function findAnyContactNearby(lat, lon, excludeName){
+  const candidates = contacts.filter(c => c.lat != null && c.lon != null && c.name !== excludeName);
+  for (const c of candidates) {
+    if (haversineDistance(lat, lon, c.lat, c.lon) <= CONTACT_MATCH_RADIUS) return c;
+  }
+  return null;
+}
+
 async function tryGeocode(query){
   const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(query));
   const data = await res.json();
@@ -459,11 +516,19 @@ function goToHelp(){
   }, { enableHighAccuracy: true, timeout: 10000 });
 }
 
-function showGuess(stage, target, label){
+function showGuess(stage, target, label, showCall){
   cascadeStage = stage;
   currentGuessTarget = target;
   document.getElementById('checkRow').style.display = 'none';
   document.getElementById('guessLabel').textContent = label;
+  const callLink = document.getElementById('guessCallLink');
+  if (showCall && target && target.phone) {
+    callLink.href = 'tel:' + target.phone.replace(/[^0-9+]/g, '');
+    callLink.textContent = 'Call ' + target.name;
+    callLink.style.display = 'block';
+  } else {
+    callLink.style.display = 'none';
+  }
   document.getElementById('guessRow').style.display = 'block';
 }
 
@@ -520,13 +585,20 @@ function renderGrounding(){
   if (matchedZone) {
     const bestDest = pickBestDestination(matchedZone);
     if (bestDest) {
-      showGuess('destination', bestDest, 'Are you going to ' + bestDest.name + '?');
+      showGuess('destination', bestDest, 'Are you going to ' + bestDest.name + '?', false);
       return;
     }
   } else {
     const nearbyContact = findRoutineContactNearby(currentLat, currentLon);
     if (nearbyContact) {
-      showGuess('contact', nearbyContact, 'Are you going to visit ' + nearbyContact.name + '?');
+      showGuess('contact-routine', nearbyContact,
+        'Are you going to visit ' + nearbyContact.name + '? (nearby, and not on your schedule)', true);
+      return;
+    }
+    const anyContact = findAnyContactNearby(currentLat, currentLon, null);
+    if (anyContact) {
+      showGuess('contact-any', anyContact,
+        'Are you going to visit ' + anyContact.name + '? (nearby, not a routine visit, and not on your schedule)', true);
       return;
     }
   }
@@ -546,9 +618,27 @@ function guessResponse(yes){
 
   // "No" narrows it down rather than dead-ending - fall to the next tier.
   if (cascadeStage === 'destination') {
-    const nearbyContact = findRoutineContactNearby(currentLat, currentLon);
-    if (nearbyContact) {
-      showGuess('contact', nearbyContact, 'Are you going to visit ' + nearbyContact.name + '?');
+    const nearbyRoutine = findRoutineContactNearby(currentLat, currentLon);
+    if (nearbyRoutine) {
+      showGuess('contact-routine', nearbyRoutine,
+        'Are you going to visit ' + nearbyRoutine.name + '? (nearby, and not on your schedule)', true);
+      return;
+    }
+    // No routine contact either - widen straight to any known contact nearby.
+    const anyContact = findAnyContactNearby(currentLat, currentLon, null);
+    if (anyContact) {
+      showGuess('contact-any', anyContact,
+        'Or are you going to visit ' + anyContact.name + '? (nearby, not a routine visit, and not on your schedule)', true);
+      return;
+    }
+  }
+
+  if (cascadeStage === 'contact-routine') {
+    // Ruling out the routine guess is itself information - widen to ANY contact nearby, not just routine ones.
+    const anyContact = findAnyContactNearby(currentLat, currentLon, currentGuessTarget ? currentGuessTarget.name : null);
+    if (anyContact) {
+      showGuess('contact-any', anyContact,
+        'Or are you going to visit ' + anyContact.name + '? (nearby, not a routine visit, and not on your schedule)', true);
       return;
     }
   }
@@ -824,6 +914,7 @@ function renderContacts(){
   list.innerHTML = contacts.map((c, i) =>
     '<div class="zone-row"><div><div class="zone-name">' + c.name + '</div>' +
     (c.address ? '<div class="zone-radius">' + c.address + '</div>' : '') +
+    (c.phone ? '<div class="zone-radius">' + c.phone + '</div>' : '') +
     '<div class="zone-tag">' + (c.routine ? 'Visited routinely' : 'Occasional') + (c.lat == null ? ' - location not found' : '') + '</div>' +
     '</div><button class="zone-remove" onclick="removeContact(' + i + ')">Remove</button></div>'
   ).join('');
@@ -855,6 +946,7 @@ async function useGpsForContact(){
 async function saveContact(){
   const name = document.getElementById('cName').value.trim();
   const addressInput = document.getElementById('cAddress').value.trim();
+  const phone = document.getElementById('cPhone').value.trim();
   const routine = document.getElementById('cRoutine').checked;
   const status = document.getElementById('contactStatus');
 
@@ -876,13 +968,14 @@ async function saveContact(){
     }
   }
 
-  contacts.push({ name, address: addressInput, routine, lat, lon });
+  contacts.push({ name, address: addressInput, phone, routine, lat, lon });
   localStorage.setItem('treoContacts', JSON.stringify(contacts));
   renderContacts();
   if (!status.className.includes('error')) { status.textContent = 'Saved.'; status.className = ''; }
   document.getElementById('cName').value = '';
   document.getElementById('cAddress').value = '';
   document.getElementById('cAddress').placeholder = 'Address...';
+  document.getElementById('cPhone').value = '';
   pendingContactGps = null;
 }
 
@@ -897,7 +990,7 @@ async function saveBulkContacts(){
   for (const line of lines) {
     const parts = line.split('|').map(p => p.trim());
     if (parts.length < 1 || !parts[0]) { failed++; continue; }
-    const [name, address, routineRaw] = parts;
+    const [name, address, routineRaw, phone] = parts;
     const routine = !routineRaw || routineRaw.toLowerCase().startsWith('y');
     let lat = null, lon = null;
     if (address) {
@@ -908,7 +1001,7 @@ async function saveBulkContacts(){
         await new Promise(r => setTimeout(r, 1100));
       } catch (e) { /* leave lat/lon null, contact still gets added */ }
     }
-    contacts.push({ name, address: address || '', routine, lat, lon });
+    contacts.push({ name, address: address || '', phone: phone || '', routine, lat, lon });
     added++;
   }
 
