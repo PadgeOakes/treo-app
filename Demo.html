@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Treo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<meta name="theme-color" content="#0B4F6C" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Treo" />
+<style>
+:root{--ocean:#0B4F6C;--sand:#F5F2EC;--white:#FFFFFF;--ink:#16202A;--slate:#4A5D6B;--mist:#E4EEF3;--coral:#D95F3B;--gold:#C89A3C;--seafoam:#1A8A76}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:var(--sand);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{background:var(--white);border-radius:20px;box-shadow:0 10px 30px rgba(11,79,108,.15);padding:28px 24px;max-width:440px;width:100%}
+h1{font-family:'DM Serif Display',serif;font-size:1.35rem;color:var(--ink);margin-bottom:4px;text-align:center}
+.subtitle{font-size:.8rem;color:var(--slate);text-align:center;margin-bottom:22px}
+.screen{display:none}
+.screen.active{display:block}
+button{background:var(--ocean);color:white;border:none;border-radius:10px;padding:12px 18px;font-size:.92rem;font-weight:600;width:100%;margin-bottom:10px;cursor:pointer}
+button.secondary{background:var(--white);color:var(--ocean);border:1.5px solid var(--mist)}
+button.link{background:none;color:var(--slate);font-weight:500;font-size:.82rem;text-decoration:underline;padding:6px}
+button.gps{background:var(--seafoam);font-size:.82rem;padding:9px}
+.big-help{background:var(--gold);font-size:1.15rem;padding:22px;margin-bottom:8px}
+.error{color:var(--coral)}
+#map{width:100%;height:220px;border-radius:14px;margin-bottom:14px;background:var(--mist)}
+.ground-status{font-size:.85rem;color:var(--slate);text-align:center;margin-bottom:10px}
+.ground-msg{background:var(--sand);border-radius:14px;padding:16px;font-size:1rem;color:var(--ink);line-height:1.5;text-align:center;margin-bottom:14px}
+.ground-places{font-size:.85rem;color:var(--seafoam);font-weight:600;text-align:center;margin-bottom:14px}
+.check-row{font-size:.85rem;color:var(--slate);text-align:center;margin-bottom:10px}
+.orient-buttons{display:flex;gap:8px}
+.orient-buttons button{margin-bottom:0}
+.btn-yes{background:var(--seafoam)}
+.btn-no{background:var(--coral)}
+.handoff-box{background:#FEE9DC;border-radius:12px;padding:14px;text-align:center;margin-top:12px;font-size:.88rem;color:var(--ink)}
+.mismatch-box{background:#FEE9DC;border:1.5px solid var(--coral);border-radius:14px;padding:16px;text-align:center;margin-bottom:14px;font-size:1rem;color:var(--ink);line-height:1.5}
+.mismatch-box .mismatch-label{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--coral);display:block;margin-bottom:6px}
+.field{margin-bottom:12px;text-align:left}
+.field label{font-size:.74rem;color:var(--slate);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px}
+.field input{width:100%;padding:9px 12px;border:1.5px solid var(--mist);border-radius:8px;font-size:.9rem;font-family:inherit}
+.gps-row{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+.gps-row input{flex:1}
+.gps-row button{width:auto;margin-bottom:0;white-space:nowrap}
+.row{display:flex;align-items:center;justify-content:space-between;background:var(--sand);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.row-name{font-size:.88rem;font-weight:600;color:var(--ink)}
+.row-sub{font-size:.72rem;color:var(--slate)}
+.row-tag{font-size:.72rem;color:var(--seafoam);margin-top:2px}
+hr{border:none;border-top:1px solid var(--mist);margin:16px 0}
+.section-label{font-size:.72rem;color:var(--slate);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 8px;font-weight:700}
+.loading-note{font-size:.8rem;color:var(--slate);text-align:center;margin-top:10px}
+</style>
+</head>
+<body>
+
+<!-- SCREEN 1: HOME -->
+<div class="card screen active" id="screen-home">
+  <h1>Treo</h1>
+  <div class="subtitle">Orientation check</div>
+  <button class="big-help" onclick="goToHelp()">I Need Help</button>
+  <button onclick="goToAddContact()">Add New Contact</button>
+  <button onclick="goToAddEvent()">Add New Event</button>
+  <button class="link" onclick="goToReview()">Show All Data</button>
+  <div id="seedStatus" class="loading-note"></div>
+</div>
+
+<!-- SCREEN 2: HELP -->
+<div class="card screen" id="screen-help">
+  <h1>You're Here</h1>
+  <div class="ground-status" id="groundStatus">Locating...</div>
+  <div id="map"></div>
+  <div class="ground-msg" id="groundMsg"></div>
+  <div class="ground-places" id="groundPlaces"></div>
+  <div class="mismatch-box" id="mismatchBox" style="display:none"></div>
+
+  <div id="guessRow" style="display:none">
+    <div class="check-row" id="guessLabel"></div>
+    <a id="guessCallLink" href="#" style="display:none;text-align:center;font-size:.85rem;color:var(--ocean);font-weight:600;text-decoration:underline;margin-bottom:8px">Call</a>
+    <div class="orient-buttons">
+      <button class="btn-yes" onclick="guessResponse(true)">Yes</button>
+      <button class="btn-no" onclick="guessResponse(false)">No</button>
+    </div>
+  </div>
+
+  <div id="checkRow" style="display:none">
+    <div class="check-row">Does this help?</div>
+    <div class="orient-buttons">
+      <button class="btn-yes" onclick="helpResponse(true)">Yes</button>
+      <button class="btn-no" onclick="helpResponse(false)">No</button>
+    </div>
+  </div>
+
+  <div class="handoff-box" id="handoffBox" style="display:none">
+    That's okay — this needs more than a quick reminder. Let's talk it through properly.
+  </div>
+
+  <hr>
+  <button class="secondary" onclick="goHome()">&larr; Back</button>
+</div>
+
+<!-- SCREEN 3: ADD CONTACT -->
+<div class="card screen" id="screen-add-contact">
+  <h1>Add New Contact</h1>
+  <div class="field"><label>Name</label><input type="text" id="cName" placeholder="Name" /></div>
+  <div class="gps-row">
+    <input type="text" id="cAddress" placeholder="Address..." />
+    <button class="gps" onclick="useGps('cAddress','contact')">Use My Location</button>
+  </div>
+  <div class="field"><label>Phone (optional)</label><input type="tel" id="cPhone" placeholder="Phone" /></div>
+  <div class="field"><label><input type="checkbox" id="cRoutine" checked style="width:auto;margin-right:6px" />Someone I visit often</label></div>
+  <div id="addContactStatus" style="font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px"></div>
+  <button onclick="saveNewContact()">Save Contact</button>
+  <hr>
+  <button class="secondary" onclick="goHome()">&larr; Back</button>
+</div>
+
+<!-- SCREEN 4: ADD EVENT -->
+<div class="card screen" id="screen-add-event">
+  <h1>Add New Event</h1>
+  <div class="field"><label>Title</label><input type="text" id="eTitle" placeholder="e.g. Dentist" /></div>
+  <div class="field"><label>Date</label><input type="date" id="eDate" /></div>
+  <div class="field"><label>Time</label><input type="time" id="eTime" /></div>
+  <div class="field"><label>How long (minutes)</label><input type="text" id="eDuration" value="60" /></div>
+  <div class="gps-row">
+    <input type="text" id="eAddress" placeholder="Address..." />
+    <button class="gps" onclick="useGps('eAddress','event')">Use My Location</button>
+  </div>
+  <div id="addEventStatus" style="font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px"></div>
+  <button onclick="saveNewEvent()">Save Event</button>
+  <hr>
+  <button class="secondary" onclick="goHome()">&larr; Back</button>
+</div>
+
+<!-- SCREEN 5: REVIEW ALL DATA -->
+<div class="card screen" id="screen-review">
+  <h1>All Your Data</h1>
+  <div class="subtitle">Confirm everything is loaded correctly</div>
+  <div class="section-label">Places</div>
+  <div id="reviewZones"></div>
+  <div class="section-label">Contacts</div>
+  <div id="reviewContacts"></div>
+  <div class="section-label">Schedule</div>
+  <div id="reviewEvents"></div>
+  <hr>
+  <button class="secondary" onclick="goHome()">&larr; Back</button>
+</div>
+
+<script>
+/* ===== Preloaded Jennifer profile - real addresses, geocoded once on first launch ===== */
+const SEED_ZONES = [
+  { name: 'Cardiff Place', address: '218 Cardiff Pl, Santa Cruz, CA', radius: 0.15, tag: 'ADL',
+    destinations: [{name:'7-Eleven',pattern:'anytime'},{name:'Laundromat',pattern:'anytime'},{name:'Bay Fed ATM',pattern:'anytime'}] },
+  { name: 'Safeway/Mission', address: '2203 Mission St, Santa Cruz, CA', radius: 0.15, tag: 'ADL',
+    destinations: [{name:'Safeway',pattern:'anytime'},{name:'ATM',pattern:'anytime'}] },
+  { name: "Trader Joe's/Front St", address: '700 Front St, Santa Cruz, CA', radius: 0.15, tag: 'ADL',
+    destinations: [{name:"Trader Joe's",pattern:'anytime'},{name:'Coffee with friends',pattern:'afternoon'}] },
+  { name: '41st Ave/Soquel', address: '2650 41st Ave, Soquel, CA', radius: 1.0, tag: 'ADL',
+    destinations: [{name:'Best Buy',pattern:'anytime'},{name:'Home Depot',pattern:'anytime'},{name:'Safeway',pattern:'anytime'},{name:"Trader Joe's",pattern:'anytime'},{name:'Bay Fed branch',pattern:'anytime'}] },
+  { name: 'Gateway Plaza/River St', address: '490 River St, Santa Cruz, CA', radius: 0.2, tag: 'ADL',
+    destinations: [{name:'Ross',pattern:'anytime'},{name:'World Market',pattern:'anytime'}] },
+  { name: 'Medical (Scotts Valley)', address: '2980 El Rancho Drive, Santa Cruz, CA', radius: 0.1, tag: 'Medical', destinations: [] },
+  { name: 'Medical (Soquel)', address: '2025 Soquel Avenue, Santa Cruz, CA', radius: 0.1, tag: 'Medical', destinations: [] },
+  { name: 'Medical (Chanticleer)', address: '2900 Chanticleer Ave, Santa Cruz, CA', radius: 0.1, tag: 'Medical', destinations: [] }
+];
+const SEED_CONTACTS = [
+  { name: 'Nikki Wood', address: '107 Castillion Terrace, Santa Cruz, CA', routine: true, phone: '' },
+  { name: 'Becky Smith', address: '209 Olive St, Santa Cruz, CA', routine: true, phone: '' },
+  { name: 'John Smith', address: '804 Almar Ave, Santa Cruz, CA', routine: true, phone: '' },
+  { name: 'Barry Deblin', address: '14 Torrey Oaks Court, Scotts Valley, CA', routine: true, phone: '' },
+  { name: 'Wendy Jacobs', address: '720 26th Ave, Santa Cruz, CA', routine: true, phone: '' }
+];
+const SEED_EVENTS = [
+  { title: 'Clinic visit', date: '2026-08-10', time: '09:00', duration: 60, address: '2025 Soquel Avenue, Santa Cruz, CA' },
+  { title: 'Follow-up appointment', date: '2026-08-18', time: '09:00', duration: 60, address: '2980 El Rancho Drive, Santa Cruz, CA' },
+  { title: 'Procedure', date: '2026-08-21', time: '07:00', duration: 90, address: '2900 Chanticleer Ave, Santa Cruz, CA' },
+  { title: 'Gym', date: '2026-08-04', time: '07:00', duration: 60, address: '1640 Mission St, Santa Cruz, CA' },
+  { title: 'Gym', date: '2026-08-11', time: '07:00', duration: 60, address: '1640 Mission St, Santa Cruz, CA' },
+  { title: 'Physical Therapy', date: '2026-08-05', time: '14:00', duration: 45, address: '1301 Mission Street, Santa Cruz, CA' },
+  { title: 'Physical Therapy', date: '2026-08-12', time: '14:00', duration: 45, address: '1301 Mission Street, Santa Cruz, CA' },
+  { title: 'Errand run', date: '2026-08-14', time: '11:00', duration: 45, address: '2600 41st Avenue, Soquel, CA' }
+];
+
+let zones = JSON.parse(localStorage.getItem('treoZones') || '[]');
+let events = JSON.parse(localStorage.getItem('treoEvents') || '[]');
+let contacts = JSON.parse(localStorage.getItem('treoContacts') || '[]');
+let currentLat = null, currentLon = null;
+let leafletMap = null, userMarker = null, zoneMarker = null;
+let cascadeStage = null, currentGuessTarget = null;
+
+const SCHEDULE_MATCH_RADIUS = 0.15;
+const CONTACT_MATCH_RADIUS = 0.2;
+const EVENT_GRACE_MINUTES = 15;
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function goHome(){ showScreen('screen-home'); }
+function goToAddContact(){ showScreen('screen-add-contact'); }
+function goToAddEvent(){ showScreen('screen-add-event'); }
+function goToReview(){ renderReview(); showScreen('screen-review'); }
+
+function toRad(deg){ return deg * Math.PI / 180; }
+function haversineDistance(lat1, lon1, lat2, lon2){
+  const R = 3958.8;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+async function tryGeocode(query){
+  const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(query));
+  const data = await res.json();
+  if (!data.length) return null;
+  return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+}
+async function geocodeAddress(address){
+  let result = await tryGeocode(address);
+  if (result) return result;
+  const commaIndex = address.indexOf(',');
+  if (commaIndex !== -1) {
+    await new Promise(r => setTimeout(r, 1100));
+    result = await tryGeocode(address.slice(commaIndex + 1).trim());
+    if (result) return result;
+  }
+  return null;
+}
+function getGpsPosition(){
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) { reject(new Error('Location services not available')); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+      (err) => reject(err), { enableHighAccuracy: true, timeout: 10000 });
+  });
+}
+
+/* ===== First-launch seed: geocode the preloaded profile once, cache forever ===== */
+async function seedIfEmpty(){
+  if (zones.length > 0 || contacts.length > 0 || events.length > 0) return;
+  const status = document.getElementById('seedStatus');
+  status.textContent = 'Setting up your places for the first time — this only happens once...';
+
+  for (const z of SEED_ZONES) {
+    status.textContent = 'Loading: ' + z.name + '...';
+    const geo = await geocodeAddress(z.address);
+    zones.push({ name: z.name, lat: geo ? geo.lat : null, lon: geo ? geo.lon : null, radius: z.radius, tag: z.tag, destinations: z.destinations });
+    await new Promise(r => setTimeout(r, 1100));
+  }
+  for (const c of SEED_CONTACTS) {
+    status.textContent = 'Loading: ' + c.name + '...';
+    const geo = await geocodeAddress(c.address);
+    contacts.push({ name: c.name, address: c.address, phone: c.phone, routine: c.routine, lat: geo ? geo.lat : null, lon: geo ? geo.lon : null });
+    await new Promise(r => setTimeout(r, 1100));
+  }
+  for (const e of SEED_EVENTS) {
+    status.textContent = 'Loading: ' + e.title + '...';
+    const geo = await geocodeAddress(e.address);
+    events.push({ title: e.title, date: e.date, time: e.time, duration: e.duration, address: e.address, lat: geo ? geo.lat : null, lon: geo ? geo.lon : null });
+    await new Promise(r => setTimeout(r, 1100));
+  }
+
+  localStorage.setItem('treoZones', JSON.stringify(zones));
+  localStorage.setItem('treoContacts', JSON.stringify(contacts));
+  localStorage.setItem('treoEvents', JSON.stringify(events));
+  status.textContent = 'Ready. ' + zones.length + ' places, ' + contacts.length + ' contacts, ' + events.length + ' events loaded.';
+  setTimeout(() => { status.textContent = ''; }, 4000);
+}
+
+/* ===== Matching logic (same cascade as the tested build) ===== */
+function findMatchingZone(lat, lon){
+  for (const z of zones) if (z.lat != null && haversineDistance(lat, lon, z.lat, z.lon) <= z.radius) return z;
+  return null;
+}
+function timeStrToMinutes(t){ if (!t) return null; const [h,m] = t.split(':').map(Number); return h*60+m; }
+function isEventActiveNow(e){
+  const now = new Date();
+  if (e.date !== now.toISOString().slice(0,10)) return false;
+  if (!e.time) return true;
+  const startMin = timeStrToMinutes(e.time);
+  const duration = (e.duration != null && e.duration !== '') ? Number(e.duration) : 60;
+  const nowMin = now.getHours()*60 + now.getMinutes();
+  return nowMin >= (startMin - EVENT_GRACE_MINUTES) && nowMin <= (startMin + duration + EVENT_GRACE_MINUTES);
+}
+function findActiveEvents(){ return events.filter(isEventActiveNow); }
+function locationMatchesEvent(lat, lon, e){ if (e.lat == null) return false; return haversineDistance(lat, lon, e.lat, e.lon) <= SCHEDULE_MATCH_RADIUS; }
+function pickBestDestination(zone){
+  if (!zone.destinations || zone.destinations.length === 0) return null;
+  const h = new Date().getHours();
+  const bucket = h>=5&&h<11?'morning':h>=11&&h<17?'afternoon':h>=17&&h<21?'evening':'night';
+  return zone.destinations.find(d=>d.pattern===bucket) || zone.destinations.find(d=>d.pattern==='anytime'||!d.pattern) || zone.destinations[0];
+}
+function findRoutineContactNearby(lat, lon){
+  for (const c of contacts.filter(c=>c.routine && c.lat!=null)) if (haversineDistance(lat,lon,c.lat,c.lon)<=CONTACT_MATCH_RADIUS) return c;
+  return null;
+}
+function findAnyContactNearby(lat, lon, excludeName){
+  for (const c of contacts.filter(c=>c.lat!=null && c.name!==excludeName)) if (haversineDistance(lat,lon,c.lat,c.lon)<=CONTACT_MATCH_RADIUS) return c;
+  return null;
+}
+
+function goToHelp(){
+  showScreen('screen-help');
+  document.getElementById('checkRow').style.display = 'none';
+  document.getElementById('guessRow').style.display = 'none';
+  document.getElementById('handoffBox').style.display = 'none';
+  document.getElementById('groundMsg').textContent = '';
+  document.getElementById('groundPlaces').textContent = '';
+  document.getElementById('mismatchBox').style.display = 'none';
+  cascadeStage = null; currentGuessTarget = null;
+  const status = document.getElementById('groundStatus');
+  status.textContent = 'Locating...'; status.className = 'ground-status';
+  if (!navigator.geolocation){ status.textContent = 'Location services are not available.'; status.className='ground-status error'; return; }
+  navigator.geolocation.getCurrentPosition((pos) => {
+    currentLat = pos.coords.latitude; currentLon = pos.coords.longitude;
+    renderGrounding();
+  }, (err) => { status.textContent = 'Could not get your location: ' + err.message; status.className='ground-status error'; },
+  { enableHighAccuracy: true, timeout: 10000 });
+}
+
+function showGuess(stage, target, label, showCall){
+  cascadeStage = stage; currentGuessTarget = target;
+  document.getElementById('checkRow').style.display = 'none';
+  document.getElementById('guessLabel').textContent = label;
+  const callLink = document.getElementById('guessCallLink');
+  if (showCall && target && target.phone) {
+    callLink.href = 'tel:' + target.phone.replace(/[^0-9+]/g,'');
+    callLink.textContent = 'Call ' + target.name;
+    callLink.style.display = 'block';
+  } else { callLink.style.display = 'none'; }
+  document.getElementById('guessRow').style.display = 'block';
+}
+
+function renderGrounding(){
+  const status = document.getElementById('groundStatus');
+  const msg = document.getElementById('groundMsg');
+  const places = document.getElementById('groundPlaces');
+  const mismatchBox = document.getElementById('mismatchBox');
+  const now = new Date();
+  status.textContent = now.toLocaleDateString('en-US',{weekday:'long'}) + ', ' + now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  mismatchBox.style.display = 'none'; mismatchBox.textContent = '';
+  document.getElementById('guessRow').style.display = 'none';
+  cascadeStage = null; currentGuessTarget = null;
+
+  const matchedZone = findMatchingZone(currentLat, currentLon);
+  const activeEvents = findActiveEvents();
+  const activeEventHere = activeEvents.find(e => locationMatchesEvent(currentLat, currentLon, e));
+  const activeEventElsewhere = activeEvents.find(e => !locationMatchesEvent(currentLat, currentLon, e));
+
+  if (activeEventHere) {
+    msg.textContent = "You're at your appointment: " + activeEventHere.title + (activeEventHere.time ? ' (' + activeEventHere.time + ')' : '') + '.';
+    places.textContent = activeEventHere.address || '';
+  } else if (matchedZone) {
+    msg.textContent = "You're at " + matchedZone.name + '.';
+    places.textContent = matchedZone.tag || '';
+  } else {
+    msg.textContent = "You're not at one of your saved places right now.";
+    places.textContent = '';
+  }
+
+  if (activeEventElsewhere) {
+    const whereNow = matchedZone ? matchedZone.name : "a location that doesn't match a saved place";
+    mismatchBox.innerHTML = '<span class="mismatch-label">Scheduled now, different place</span>You have <strong>' + activeEventElsewhere.title + '</strong>' +
+      (activeEventElsewhere.time ? ' at ' + activeEventElsewhere.time : '') + (activeEventElsewhere.address ? ' at ' + activeEventElsewhere.address : '') +
+      ' — but it looks like you\'re at ' + whereNow + '.';
+    mismatchBox.style.display = 'block';
+  }
+
+  drawMap(matchedZone, activeEventHere, activeEventElsewhere);
+
+  if (activeEventHere || activeEventElsewhere) { document.getElementById('checkRow').style.display = 'block'; return; }
+
+  if (matchedZone) {
+    const bestDest = pickBestDestination(matchedZone);
+    if (bestDest) { showGuess('destination', bestDest, 'Are you going to ' + bestDest.name + '?', false); return; }
+  } else {
+    const nearbyRoutine = findRoutineContactNearby(currentLat, currentLon);
+    if (nearbyRoutine) { showGuess('contact-routine', nearbyRoutine, 'Are you going to visit ' + nearbyRoutine.name + '? (nearby, and not on your schedule)', true); return; }
+    const anyContact = findAnyContactNearby(currentLat, currentLon, null);
+    if (anyContact) { showGuess('contact-any', anyContact, 'Are you going to visit ' + anyContact.name + '? (nearby, not a routine visit, and not on your schedule)', true); return; }
+  }
+  document.getElementById('checkRow').style.display = 'block';
+}
+
+function drawMap(matchedZone, matchedEvent, mismatchEvent){
+  if (!leafletMap) {
+    leafletMap = L.map('map', { zoomControl: false, attributionControl: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(leafletMap);
+  }
+  if (userMarker) leafletMap.removeLayer(userMarker);
+  userMarker = L.circleMarker([currentLat, currentLon], { radius: 8, color: '#0B4F6C', fillColor: '#0B4F6C', fillOpacity: 1 }).addTo(leafletMap);
+  if (zoneMarker) { leafletMap.removeLayer(zoneMarker); zoneMarker = null; }
+
+  if (mismatchEvent && mismatchEvent.lat != null) {
+    zoneMarker = L.circle([mismatchEvent.lat, mismatchEvent.lon], { radius: SCHEDULE_MATCH_RADIUS*1609.34, color:'#D95F3B', fillColor:'#D95F3B', fillOpacity:0.2 }).addTo(leafletMap);
+    leafletMap.fitBounds([[currentLat,currentLon],[mismatchEvent.lat,mismatchEvent.lon]], { padding:[30,30] });
+  } else if (matchedEvent) {
+    zoneMarker = L.circle([matchedEvent.lat, matchedEvent.lon], { radius: SCHEDULE_MATCH_RADIUS*1609.34, color:'#C89A3C', fillColor:'#C89A3C', fillOpacity:0.15 }).addTo(leafletMap);
+    leafletMap.setView([currentLat, currentLon], 15);
+  } else if (matchedZone) {
+    zoneMarker = L.circle([matchedZone.lat, matchedZone.lon], { radius: matchedZone.radius*1609.34, color:'#1A8A76', fillColor:'#1A8A76', fillOpacity:0.15 }).addTo(leafletMap);
+    leafletMap.setView([currentLat, currentLon], 15);
+  } else {
+    leafletMap.setView([currentLat, currentLon], 13);
+  }
+  setTimeout(() => leafletMap.invalidateSize(), 200);
+}
+
+function helpResponse(helped){
+  document.getElementById('checkRow').style.display = 'none';
+  if (helped) document.getElementById('groundStatus').textContent = 'Good — glad that helped.';
+  else document.getElementById('handoffBox').style.display = 'block';
+}
+
+function guessResponse(yes){
+  document.getElementById('guessRow').style.display = 'none';
+  if (yes) { document.getElementById('groundStatus').textContent = 'Good — glad that helped.'; cascadeStage=null; currentGuessTarget=null; return; }
+  if (cascadeStage === 'destination') {
+    const nearbyRoutine = findRoutineContactNearby(currentLat, currentLon);
+    if (nearbyRoutine) { showGuess('contact-routine', nearbyRoutine, 'Are you going to visit ' + nearbyRoutine.name + '? (nearby, and not on your schedule)', true); return; }
+    const anyContact = findAnyContactNearby(currentLat, currentLon, null);
+    if (anyContact) { showGuess('contact-any', anyContact, 'Or are you going to visit ' + anyContact.name + '? (nearby, not a routine visit, and not on your schedule)', true); return; }
+  }
+  if (cascadeStage === 'contact-routine') {
+    const anyContact = findAnyContactNearby(currentLat, currentLon, currentGuessTarget ? currentGuessTarget.name : null);
+    if (anyContact) { showGuess('contact-any', anyContact, 'Or are you going to visit ' + anyContact.name + '? (nearby, not a routine visit, and not on your schedule)', true); return; }
+  }
+  cascadeStage = null; currentGuessTarget = null;
+  document.getElementById('checkRow').style.display = 'block';
+}
+
+/* ===== Add New Contact / Add New Event (simple single-entry forms) ===== */
+let pendingGps = {};
+async function useGps(fieldId, kind){
+  const status = document.getElementById(kind === 'contact' ? 'addContactStatus' : 'addEventStatus');
+  status.textContent = 'Getting current location...'; status.className = '';
+  try {
+    const pos = await getGpsPosition();
+    pendingGps[kind] = pos;
+    document.getElementById(fieldId).value = '';
+    document.getElementById(fieldId).placeholder = 'Current location captured';
+    status.textContent = 'Location captured.';
+  } catch (e) { status.textContent = 'Could not get location: ' + e.message; status.className = 'error'; }
+}
+
+async function saveNewContact(){
+  const name = document.getElementById('cName').value.trim();
+  const address = document.getElementById('cAddress').value.trim();
+  const phone = document.getElementById('cPhone').value.trim();
+  const routine = document.getElementById('cRoutine').checked;
+  const status = document.getElementById('addContactStatus');
+  if (!name) { status.textContent = 'Enter a name.'; status.className = 'error'; return; }
+  let lat = null, lon = null;
+  if (pendingGps.contact) { lat = pendingGps.contact.lat; lon = pendingGps.contact.lon; }
+  else if (address) {
+    status.textContent = 'Looking up address...';
+    const geo = await geocodeAddress(address);
+    if (geo) { lat = geo.lat; lon = geo.lon; } else { status.textContent = 'Address not found - saved anyway, but location matching won\'t work until fixed.'; status.className='error'; }
+  }
+  contacts.push({ name, address, phone, routine, lat, lon });
+  localStorage.setItem('treoContacts', JSON.stringify(contacts));
+  if (!status.className.includes('error')) { status.textContent = 'Saved.'; status.className=''; }
+  document.getElementById('cName').value=''; document.getElementById('cAddress').value=''; document.getElementById('cPhone').value='';
+  pendingGps.contact = null;
+}
+
+async function saveNewEvent(){
+  const title = document.getElementById('eTitle').value.trim();
+  const date = document.getElementById('eDate').value;
+  const time = document.getElementById('eTime').value;
+  const duration = parseInt(document.getElementById('eDuration').value, 10) || 60;
+  const address = document.getElementById('eAddress').value.trim();
+  const status = document.getElementById('addEventStatus');
+  if (!title) { status.textContent = 'Enter a title.'; status.className = 'error'; return; }
+  if (!date) { status.textContent = 'Pick a date.'; status.className = 'error'; return; }
+  let lat = null, lon = null;
+  if (pendingGps.event) { lat = pendingGps.event.lat; lon = pendingGps.event.lon; }
+  else if (address) {
+    status.textContent = 'Looking up address...';
+    const geo = await geocodeAddress(address);
+    if (geo) { lat = geo.lat; lon = geo.lon; } else { status.textContent = 'Address not found - saved anyway, but location matching won\'t work until fixed.'; status.className='error'; }
+  }
+  events.push({ title, date, time, duration, address, lat, lon });
+  localStorage.setItem('treoEvents', JSON.stringify(events));
+  if (!status.className.includes('error')) { status.textContent = 'Saved.'; status.className=''; }
+  document.getElementById('eTitle').value=''; document.getElementById('eDate').value=''; document.getElementById('eTime').value='';
+  document.getElementById('eDuration').value='60'; document.getElementById('eAddress').value='';
+  pendingGps.event = null;
+}
+
+/* ===== Review screen - confirms preloaded + added data is really there ===== */
+function renderReview(){
+  const zEl = document.getElementById('reviewZones');
+  zEl.innerHTML = zones.length ? zones.map(z =>
+    '<div class="row"><div><div class="row-name">' + z.name + '</div><div class="row-sub">' + (z.lat!=null ? z.radius+' mile radius' : 'location not found') + '</div>' +
+    (z.destinations && z.destinations.length ? '<div class="row-tag">' + z.destinations.map(d=>d.name).join(', ') + '</div>' : '') +
+    '</div></div>').join('') : '<div class="row-sub">No places loaded.</div>';
+
+  const cEl = document.getElementById('reviewContacts');
+  cEl.innerHTML = contacts.length ? contacts.map(c =>
+    '<div class="row"><div><div class="row-name">' + c.name + '</div><div class="row-sub">' + (c.lat!=null ? c.address : 'location not found') + '</div></div></div>'
+  ).join('') : '<div class="row-sub">No contacts loaded.</div>';
+
+  const eEl = document.getElementById('reviewEvents');
+  const sorted = [...events].sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
+  eEl.innerHTML = sorted.length ? sorted.map(e =>
+    '<div class="row"><div><div class="row-name">' + e.title + '</div><div class="row-sub">' + e.date + (e.time?' at '+e.time:'') + (e.lat==null?' - location not found':'') + '</div></div></div>'
+  ).join('') : '<div class="row-sub">No events loaded.</div>';
+}
+
+seedIfEmpty();
+</script>
+</body>
+</html>
