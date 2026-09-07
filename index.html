@@ -16,7 +16,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 :root{--ocean:#0B4F6C;--sand:#F5F2EC;--white:#FFFFFF;--ink:#16202A;--slate:#4A5D6B;--mist:#E4EEF3;--coral:#D95F3B;--gold:#C89A3C;--seafoam:#1A8A76}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -30,12 +29,17 @@ button{background:var(--ocean);color:white;border:none;border-radius:10px;paddin
 button.secondary{background:var(--white);color:var(--ocean);border:1.5px solid var(--mist)}
 button.link{background:none;color:var(--slate);font-weight:500;font-size:.82rem;text-decoration:underline;padding:6px}
 button.gps{background:var(--seafoam);font-size:.82rem;padding:9px}
-button.google{background:#4285F4}
-button.google.connected{background:var(--seafoam)}
 .big-help{background:var(--gold);font-size:1.15rem;padding:22px;margin-bottom:8px}
 .error{color:var(--coral)}
 
-#screen-home .home-buttons{margin-top:6px}
+/* ---------- DASHBOARD (home) ---------- */
+.dash-image{width:100%;height:150px;border-radius:14px;background:var(--mist);display:flex;align-items:center;justify-content:center;color:var(--slate);font-size:.8rem;margin-bottom:14px}
+.dash-datetime{text-align:center;margin-bottom:14px}
+.dash-date{font-size:.85rem;color:var(--slate)}
+.dash-time{font-family:'DM Serif Display',serif;font-size:2rem;color:var(--ink)}
+.dash-text{min-height:44px;background:var(--sand);border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:.9rem;color:var(--slate);text-align:center}
+.dash-links{display:flex;flex-wrap:wrap;justify-content:center;gap:2px;margin-top:4px}
+.dash-links button{width:auto}
 
 #map{width:100%;height:220px;border-radius:14px;margin-bottom:14px;background:var(--mist)}
 .ground-status{font-size:.85rem;color:var(--slate);text-align:center;margin-bottom:10px}
@@ -70,7 +74,6 @@ hr{border:none;border-top:1px solid var(--mist);margin:16px 0}
 .event-when{font-size:.72rem;color:var(--slate)}
 .event-addr{font-size:.72rem;color:var(--slate);margin-top:2px}
 .event-geo{font-size:.68rem;margin-top:3px}
-.event-src{font-size:.68rem;color:#4285F4;margin-top:2px}
 .geo-ok{color:var(--seafoam)}
 .geo-bad{color:var(--coral)}
 .tabs{display:flex;gap:6px;margin-bottom:16px}
@@ -78,26 +81,36 @@ hr{border:none;border-top:1px solid var(--mist);margin:16px 0}
 .tab.active{background:var(--ocean);color:white}
 .tab-panel{display:none}
 .tab-panel.active{display:block}
-.gcal-status{font-size:.78rem;color:var(--slate);text-align:center;margin-bottom:10px;min-height:16px}
 </style>
 </head>
 <body>
 
-<!-- SCREEN 1: HOME -->
+<!-- SCREEN 1: DASHBOARD -->
 <div class="card screen active" id="screen-home">
   <h1>Treo</h1>
   <div class="subtitle">Orientation check</div>
-  <div class="home-buttons">
-    <button class="big-help" onclick="goToHelp()">I Need Help</button>
-    <button class="link" onclick="goToSetup()">Set Up My Places</button>
+
+  <div class="dash-image" id="dashImage">Image</div>
+
+  <div class="dash-datetime">
+    <div class="dash-date" id="dashDate">—</div>
+    <div class="dash-time" id="dashTime">—</div>
+  </div>
+
+  <div class="dash-text" id="dashText"></div>
+
+  <button class="big-help" onclick="goToHelp()">I Need Help</button>
+
+  <div class="dash-links">
+    <button class="link" onclick="goToSetup()">My Places</button>
     <button class="link" onclick="goToSchedule()">My Schedule</button>
     <button class="link" onclick="goToContacts()">My Contacts</button>
-    <button class="link" onclick="loadTestData()">Reload Test Data (Jennifer)</button>
-    <button class="link" onclick="goToImport()">Import a Profile</button>
+    <button class="link" onclick="loadTestData()">Reload Test Data</button>
+    <button class="link" onclick="goToImport()">Import Profile</button>
   </div>
 </div>
 
-<!-- SCREEN 2: GROUNDING / HELP VIEW -->
+<!-- SCREEN 2: ORIENTATION VIEW (after "I Need Help") -->
 <div class="card screen" id="screen-help">
   <h1>You're Here</h1>
   <div class="ground-status" id="groundStatus">Locating...</div>
@@ -172,9 +185,6 @@ Pizza place | evening"></textarea>
 <div class="card screen" id="screen-schedule">
   <h1>My Schedule</h1>
   <div class="subtitle">Events Treo will check against your location</div>
-
-  <button class="google" id="gcalBtn" onclick="handleGoogleButton()">Connect Google Calendar</button>
-  <div class="gcal-status" id="gcalStatus"></div>
 
   <div id="eventList"></div>
 
@@ -280,12 +290,6 @@ Pizza place | evening"></textarea>
 </div>
 
 <script>
-/* ===== Google Calendar connection settings ===== */
-const GOOGLE_CLIENT_ID = '614130878212-np93cmm7lot2tift4cjhrrgtvlad36jn.apps.googleusercontent.com';
-const GOOGLE_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
-let googleTokenClient = null;
-let googleAccessToken = null;
-
 let zones = JSON.parse(localStorage.getItem('treoZones') || '[]');
 let events = JSON.parse(localStorage.getItem('treoEvents') || '[]');
 let contacts = JSON.parse(localStorage.getItem('treoContacts') || '[]');
@@ -361,7 +365,7 @@ function showScreen(id){
 }
 function goHome(){ showScreen('screen-home'); }
 function goToSetup(){ renderZones(); showScreen('screen-setup'); }
-function goToSchedule(){ renderEvents(); updateGoogleButton(); showScreen('screen-schedule'); }
+function goToSchedule(){ renderEvents(); showScreen('screen-schedule'); }
 function goToContacts(){ renderContacts(); showScreen('screen-contacts'); }
 function goToImport(){ showScreen('screen-import'); }
 
@@ -371,6 +375,17 @@ function switchTab(which){
   document.getElementById('panelSingle').classList.toggle('active', which==='single');
   document.getElementById('panelBulk').classList.toggle('active', which==='bulk');
 }
+
+/* ---------- DASHBOARD live clock ---------- */
+function updateDashboardClock(){
+  const now = new Date();
+  const dateEl = document.getElementById('dashDate');
+  const timeEl = document.getElementById('dashTime');
+  if (dateEl) dateEl.textContent = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  if (timeEl) timeEl.textContent = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+updateDashboardClock();
+setInterval(updateDashboardClock, 15000);
 
 function toRad(deg){ return deg * Math.PI / 180; }
 function haversineDistance(lat1, lon1, lat2, lon2){
@@ -496,114 +511,6 @@ function getGpsPosition(){
   });
 }
 
-/* ===== Google Calendar connection ===== */
-function updateGoogleButton(){
-  const btn = document.getElementById('gcalBtn');
-  if (googleAccessToken) {
-    btn.textContent = 'Refresh from Google Calendar';
-    btn.classList.add('connected');
-  } else {
-    btn.textContent = 'Connect Google Calendar';
-    btn.classList.remove('connected');
-  }
-}
-
-function handleGoogleButton(){
-  const status = document.getElementById('gcalStatus');
-  if (typeof google === 'undefined' || !google.accounts) {
-    status.textContent = 'Google sign-in is still loading - try again in a second.';
-    status.className = 'gcal-status error';
-    return;
-  }
-  if (!googleTokenClient) {
-    googleTokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: GOOGLE_SCOPE,
-      callback: onGoogleToken
-    });
-  }
-  status.textContent = 'Opening Google sign-in...';
-  status.className = 'gcal-status';
-  googleTokenClient.requestAccessToken();
-}
-
-async function onGoogleToken(response){
-  const status = document.getElementById('gcalStatus');
-  if (response.error) {
-    status.textContent = 'Google sign-in did not complete: ' + response.error;
-    status.className = 'gcal-status error';
-    return;
-  }
-  googleAccessToken = response.access_token;
-  updateGoogleButton();
-  await pullGoogleCalendarEvents();
-}
-
-// Pulls real events from the next 30 days on the person's primary Google Calendar,
-// geocodes each one's location text (if it has one), and merges them into Treo's
-// existing event list - replacing any previously-pulled Google events, but leaving
-// manually-entered events untouched.
-async function pullGoogleCalendarEvents(){
-  const status = document.getElementById('gcalStatus');
-  status.textContent = 'Reading your calendar...';
-  status.className = 'gcal-status';
-
-  const timeMin = new Date().toISOString();
-  const timeMax = new Date(Date.now() + 30*24*60*60*1000).toISOString();
-  const url = 'https://www.googleapis.com/calendar/v3/calendars/primary/events'
-    + '?timeMin=' + encodeURIComponent(timeMin)
-    + '&timeMax=' + encodeURIComponent(timeMax)
-    + '&singleEvents=true&orderBy=startTime&maxResults=50';
-
-  let data;
-  try {
-    const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + googleAccessToken } });
-    if (!res.ok) throw new Error('Google Calendar returned an error (status ' + res.status + ')');
-    data = await res.json();
-  } catch (e) {
-    status.textContent = 'Could not read your calendar: ' + e.message;
-    status.className = 'gcal-status error';
-    return;
-  }
-
-  const items = data.items || [];
-  // Drop any events previously pulled from Google, keep everything manually entered.
-  events = events.filter(e => e.source !== 'google');
-
-  let geocoded = 0;
-  for (const item of items) {
-    if (!item.start) continue;
-    const startStr = item.start.dateTime || item.start.date;
-    const date = startStr.slice(0, 10);
-    let time = '';
-    if (item.start.dateTime) {
-      const d = new Date(item.start.dateTime);
-      time = d.toTimeString().slice(0,5);
-    }
-    let duration = 60;
-    if (item.start.dateTime && item.end && item.end.dateTime) {
-      duration = Math.round((new Date(item.end.dateTime) - new Date(item.start.dateTime)) / 60000);
-    }
-    const title = item.summary || 'Untitled';
-    const address = item.location || '';
-    let lat = null, lon = null;
-    if (address) {
-      status.textContent = 'Looking up location for: ' + title + '...';
-      try {
-        const geo = await geocodeAddress(address);
-        if (geo) { lat = geo.lat; lon = geo.lon; geocoded++; }
-        await new Promise(r => setTimeout(r, 1100));
-      } catch (e) { /* leave lat/lon null, event still gets added */ }
-    }
-    events.push({ date, time, duration, title, address, lat, lon, source: 'google' });
-  }
-
-  localStorage.setItem('treoEvents', JSON.stringify(events));
-  renderEvents();
-  status.textContent = 'Pulled ' + items.length + ' event(s) from Google Calendar (' + geocoded + ' with a location found).';
-  status.className = 'gcal-status';
-}
-
 /* ---------- SCREEN 2: HELP FLOW ---------- */
 let cascadeStage = null; // null | 'destination' | 'contact'
 let currentGuessTarget = null;
@@ -674,9 +581,11 @@ function renderGrounding(){
   const activeEventHere = activeEvents.find(e => locationMatchesEvent(currentLat, currentLon, e));
   const activeEventElsewhere = activeEvents.find(e => !locationMatchesEvent(currentLat, currentLon, e));
 
+  // Matches Paddy's Scotts Valley example directly: zone name + the scheduled event, in one line.
   if (activeEventHere) {
-    const timeLabel = activeEventHere.time ? ' (' + activeEventHere.time + ')' : '';
-    msg.textContent = "You're at your appointment: " + activeEventHere.title + timeLabel + '.';
+    const timeLabel = activeEventHere.time ? ' at ' + activeEventHere.time : '';
+    const whereLabel = matchedZone ? matchedZone.name : 'this area';
+    msg.textContent = "You're in " + whereLabel + ". You have " + activeEventHere.title + timeLabel + '.';
     places.textContent = activeEventHere.address || '';
   } else if (matchedZone) {
     msg.textContent = "You're at " + matchedZone.name + '.';
@@ -698,7 +607,8 @@ function renderGrounding(){
   drawMap(matchedZone, activeEventHere, activeEventElsewhere);
 
   // Cascade: an active scheduled event always takes priority and just uses the plain Yes/No below.
-  // Otherwise, try a ranked guess - best destination within a matched zone first, then a nearby routine contact.
+  // Otherwise, try a ranked "best guess" - best destination within a matched zone first
+  // (e.g. the Almar/Safeway zone with several possible stops), then a nearby routine contact.
   if (activeEventHere || activeEventElsewhere) {
     document.getElementById('checkRow').style.display = 'block';
     return;
@@ -924,7 +834,6 @@ function renderEvents(){
     '<div class="event-when">' + e.date + (e.time ? ' at ' + e.time : '') + endLabel + '</div>' +
     (e.address ? '<div class="event-addr">' + e.address + '</div>' : '') +
     '<div class="event-geo ' + (e.lat != null ? 'geo-ok' : 'geo-bad') + '">' + (e.lat != null ? 'Location found' : 'Location not found - will not match') + '</div>' +
-    (e.source === 'google' ? '<div class="event-src">From Google Calendar</div>' : '') +
     '</div><button class="zone-remove" onclick="removeEvent(' + e._i + ')">Remove</button></div></div>';
   }).join('');
 }
