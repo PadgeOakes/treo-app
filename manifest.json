@@ -2,7 +2,7 @@
   "name": "Treo - Orientation",
   "short_name": "Treo",
   "description": "Orientation check - where you are, what's here, what's next",
-  "start_url": "./index.html",
+  "start_url": "./treo-beta.html",
   "display": "standalone",
   "background_color": "#F5F2EC",
   "theme_color": "#0B4F6C",

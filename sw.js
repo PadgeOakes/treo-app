@@ -1,11 +1,12 @@
-// Treo service worker - v2
-// Pages (index.html, treo-test.html) load network-first, so updates always arrive when you are online,
+// Treo service worker - v3
+// Pages (index.html, treo-beta.html, treo-test.html) load network-first, so updates always arrive when you are online,
 // and fall back to the last saved copy when you are not (or the connection is very slow).
 // The map library and fonts are saved the first time they load, so the map also works offline
 // after one online visit. Address lookups and map tiles always go straight to the network.
-const CACHE_NAME = 'treo-cache-v2';
+const CACHE_NAME = 'treo-cache-v3';
 const APP_SHELL = [
   './index.html',
+  './treo-beta.html',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png'
