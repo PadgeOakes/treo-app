@@ -1,11 +1,18 @@
-// Treo service worker - caches the app shell so it works offline once installed.
-const CACHE_NAME = 'treo-cache-v1';
+// Treo service worker - v2
+// Pages (index.html, treo-test.html) load network-first, so updates always arrive when you are online,
+// and fall back to the last saved copy when you are not (or the connection is very slow).
+// The map library and fonts are saved the first time they load, so the map also works offline
+// after one online visit. Address lookups and map tiles always go straight to the network.
+const CACHE_NAME = 'treo-cache-v2';
 const APP_SHELL = [
   './index.html',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png'
 ];
+const SHELL_PATHS = APP_SHELL.map((p) => new URL(p, self.registration.scope).pathname);
+const LIBRARY_HOSTS = ['unpkg.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
+const SLOW_NETWORK_MS = 4000; // after this long with no answer, use the saved copy if there is one
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -16,26 +23,76 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((names) =>
-      Promise.all(names.filter((n) => n !== CACHE_NAME).map((n) => caches.delete(n)))
-    )
+    caches.keys()
+      .then((names) => Promise.all(names.filter((n) => n !== CACHE_NAME).map((n) => caches.delete(n))))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
-// Cache-first for the app shell itself; network-first for everything else
-// (map tiles, geocoding lookups) since those need to be live when possible.
-self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-  const isAppShell = APP_SHELL.some((path) => url.pathname.endsWith(path.replace('./', '')));
-
-  if (isAppShell) {
-    event.respondWith(
-      caches.match(event.request).then((cached) => cached || fetch(event.request))
-    );
-  } else {
-    event.respondWith(
-      fetch(event.request).catch(() => caches.match(event.request))
-    );
+// Network first; saved copy if the network fails or is too slow.
+async function networkFirst(event) {
+  const request = event.request;
+  const cache = await caches.open(CACHE_NAME);
+  const fromNetwork = fetch(request).then((res) => {
+    // Save good, same-origin answers (not redirects - those can't be replayed for page loads).
+    if (res && res.ok && res.type === 'basic' && !res.redirected) {
+      cache.put(request, res.clone()).catch(() => {});
+    }
+    return res;
+  });
+  try { event.waitUntil(fromNetwork.catch(() => {})); } catch (e) { /* refresh is best-effort */ }
+  try {
+    return await Promise.race([
+      fromNetwork,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('slow')), SLOW_NETWORK_MS))
+    ]);
+  } catch (err) {
+    const saved = await cache.match(request, { ignoreSearch: true });
+    if (saved) return saved;
+    // Opened the bare folder address with no saved copy of it: use the saved main page.
+    if (request.mode === 'navigate' && new URL(request.url).pathname.endsWith('/')) {
+      const home = await cache.match(new URL('./index.html', self.registration.scope).href);
+      if (home) return home;
+    }
+    return fromNetwork; // nothing saved: keep waiting for the network (or fail normally)
   }
+}
+
+// Manifest and icons: saved copy first (they only change when the cache name is bumped).
+async function cacheFirst(request) {
+  const saved = await caches.match(request, { ignoreSearch: true });
+  return saved || fetch(request);
+}
+
+// Map library and fonts: saved copy first; fetched once and saved if not yet there.
+async function libraryFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const saved = await cache.match(request.url);
+  if (saved) return saved;
+  // Ask with CORS so the saved copy is a normal, readable response (opaque ones waste storage quota).
+  const res = await fetch(request.url, { mode: 'cors', credentials: 'omit' });
+  if (res && res.ok) cache.put(request.url, res.clone()).catch(() => {});
+  return res;
+}
+
+self.addEventListener('fetch', (event) => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+
+  if (url.origin === self.location.origin) {
+    const isPage = request.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/');
+    if (!isPage && SHELL_PATHS.includes(url.pathname)) {
+      event.respondWith(cacheFirst(request));
+    } else {
+      event.respondWith(networkFirst(event));
+    }
+    return;
+  }
+
+  if (LIBRARY_HOSTS.includes(url.hostname)) {
+    event.respondWith(libraryFirst(request));
+  }
+  // Anything else (address lookups, map tiles): not touched, goes straight to the network.
 });
