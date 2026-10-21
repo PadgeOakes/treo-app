@@ -4,11 +4,14 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Treo Beta — Orientation</title>
-<!-- treo-beta.html - tester build, Oct 8 2026. Derived from treo-test.html.
+<!-- treo-beta.html - tester build. Oct 8 2026; Set up Treo page added Oct 21 2026 (Phase 1).
      Contains NO personal data: nothing is built in, and everything a tester saves stays on their own device (key prefix treoBeta).
-     Differences from treo-test.html: built-in profile and its reload button removed; first-run hint on the home screen;
-     a clearer message when no places are saved yet; typed text is escaped before it is shown; Treo keeps working (with a warning)
-     if the browser refuses to save; neutral example text in the form fields. The matching logic is unchanged. -->
+     Phase 1 changes: one "Set up Treo" page (opened from the Caregiver button) replaces the four small home links.
+     Places, People and Regular things/Coming up each have a form with Edit and Remove. Addresses are typed as street, city,
+     state and zip, then confirmed on a small map before saving. Regular things can repeat (every day / certain days).
+     The home screen shows what is on now or next. Export joins Import so a caregiver can prepare a setup on their own phone.
+     Fixed: a scheduled item with no place no longer triggers "Scheduled now, different place".
+     The matching logic (distances, time-of-day buckets, the guess cascade) is unchanged. Same saved-data keys as before. -->
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#0B4F6C" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -27,30 +30,34 @@
 body{font-family:'Inter',sans-serif;background:var(--sand);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
 .card{background:var(--white);border-radius:20px;box-shadow:0 10px 30px rgba(11,79,108,.15);padding:28px 24px;max-width:440px;width:100%}
 h1{font-family:'DM Serif Display',serif;font-size:1.35rem;color:var(--ink);margin-bottom:4px;text-align:center}
+h2{font-family:'DM Serif Display',serif;font-size:1.1rem;color:var(--ink);margin-bottom:10px}
 .subtitle{font-size:.8rem;color:var(--slate);text-align:center;margin-bottom:22px}
 .screen{display:none}
 .screen.active{display:block}
-button{background:var(--ocean);color:white;border:none;border-radius:10px;padding:12px 18px;font-size:.92rem;font-weight:600;width:100%;margin-bottom:10px;cursor:pointer}
+button{background:var(--ocean);color:white;border:none;border-radius:10px;padding:12px 18px;font-size:.92rem;font-weight:600;width:100%;margin-bottom:10px;cursor:pointer;min-height:44px}
 button.secondary{background:var(--white);color:var(--ocean);border:1.5px solid var(--mist)}
 button.link{background:none;color:var(--slate);font-weight:500;font-size:.82rem;text-decoration:underline;padding:6px}
 button.gps{background:var(--seafoam);font-size:.82rem;padding:9px}
+button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 .big-help{background:var(--gold);font-size:1.15rem;padding:22px;margin-bottom:8px}
 .error{color:var(--coral)}
 
 /* ---------- DASHBOARD (home) ---------- */
-.dash-image{width:100%;height:150px;border-radius:14px;background:var(--mist);display:flex;align-items:center;justify-content:center;color:var(--slate);font-size:.8rem;margin-bottom:14px}
 .dash-datetime{text-align:center;margin-bottom:14px}
 .dash-date{font-size:.85rem;color:var(--slate)}
 .dash-time{font-family:'DM Serif Display',serif;font-size:2rem;color:var(--ink)}
 .dash-text{min-height:44px;background:var(--sand);border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:.9rem;color:var(--slate);text-align:center}
+.dash-text .dash-hello{font-size:.8rem;margin-bottom:4px}
+.dash-text .dash-main{font-size:1.05rem;color:var(--ink);font-weight:600;line-height:1.35}
+.dash-text .dash-sub{font-size:.85rem;margin-top:2px}
 .dash-links{display:flex;flex-wrap:wrap;justify-content:center;gap:2px;margin-top:4px}
-.dash-links button{width:auto}
 
 #map{width:100%;height:220px;border-radius:14px;margin-bottom:14px;background:var(--mist)}
-#map.map-missing{display:flex;align-items:center;justify-content:center;color:var(--slate);font-size:.8rem}
+#map.map-missing,#confirmMap.map-missing{display:flex;align-items:center;justify-content:center;color:var(--slate);font-size:.8rem}
 .ground-status{font-size:.85rem;color:var(--slate);text-align:center;margin-bottom:10px}
 .ground-msg{background:var(--sand);border-radius:14px;padding:16px;font-size:1rem;color:var(--ink);line-height:1.5;text-align:center;margin-bottom:14px}
 .ground-places{font-size:.85rem;color:var(--seafoam);font-weight:600;text-align:center;margin-bottom:14px}
+.ground-places.sched{color:var(--ocean)}
 .check-row{font-size:.85rem;color:var(--slate);text-align:center;margin-bottom:10px}
 .orient-buttons{display:flex;gap:8px}
 .orient-buttons button{margin-bottom:0}
@@ -60,33 +67,64 @@ button.gps{background:var(--seafoam);font-size:.82rem;padding:9px}
 .mismatch-box{background:#FEE9DC;border:1.5px solid var(--coral);border-radius:14px;padding:16px;text-align:center;margin-bottom:14px;font-size:1rem;color:var(--ink);line-height:1.5}
 .mismatch-box .mismatch-label{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--coral);display:block;margin-bottom:6px}
 
+/* ---------- FORMS ---------- */
 .field{margin-bottom:12px;text-align:left}
-.field label{font-size:.74rem;color:var(--slate);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px}
-.field input,.field textarea{width:100%;padding:9px 12px;border:1.5px solid var(--mist);border-radius:8px;font-size:.9rem;font-family:inherit}
+.field label,.field .lbl{font-size:.74rem;color:var(--slate);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px}
+.field input[type=text],.field input[type=tel],.field input[type=date],.field input[type=time],.field input:not([type]),.field select,.field textarea{width:100%;padding:10px 12px;border:1.5px solid var(--mist);border-radius:8px;font-size:1rem;font-family:inherit;background:var(--white);color:var(--ink)}
 .field textarea{resize:vertical;min-height:80px}
-.gps-row{display:flex;gap:8px;align-items:center;margin-bottom:12px}
-.gps-row input{flex:1}
-.gps-row button{width:auto;margin-bottom:0;white-space:nowrap}
-.zone-row{display:flex;align-items:center;justify-content:space-between;background:var(--sand);border-radius:10px;padding:10px 12px;margin-bottom:8px}
-.zone-name{font-size:.88rem;font-weight:600;color:var(--ink)}
-.zone-radius{font-size:.72rem;color:var(--slate)}
-.zone-tag{font-size:.72rem;color:var(--seafoam);margin-top:2px}
-.zone-remove{background:none;border:none;color:var(--coral);font-size:.8rem;width:auto;padding:2px 8px;margin:0}
+.field .hint{font-size:.74rem;color:var(--slate);margin-top:4px}
+.row2{display:flex;gap:8px}
+.row2 .field{flex:1;min-width:0}
+.checkline{display:flex;align-items:center;gap:8px;font-size:.88rem;color:var(--ink);min-height:44px}
+.checkline input{width:20px;height:20px;flex-shrink:0}
+.status{font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px}
+.status.error{color:var(--coral)}
+.gps-note{font-size:.78rem;color:var(--seafoam);margin:-4px 0 10px;min-height:16px}
+.subhead{font-size:.82rem;font-weight:700;color:var(--ink);margin:4px 0 10px}
 hr{border:none;border-top:1px solid var(--mist);margin:16px 0}
 
-.event-row{background:var(--sand);border-radius:10px;padding:10px 12px;margin-bottom:8px}
-.event-top{display:flex;align-items:center;justify-content:space-between}
-.event-title{font-size:.88rem;font-weight:600;color:var(--ink)}
-.event-when{font-size:.72rem;color:var(--slate)}
-.event-addr{font-size:.72rem;color:var(--slate);margin-top:2px}
-.event-geo{font-size:.68rem;margin-top:3px}
+/* ---------- LIST ROWS ---------- */
+.zone-row{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;background:var(--sand);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.zone-row.past{opacity:.6}
+.zone-row .info{min-width:0;flex:1}
+.zone-name{font-size:.9rem;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+.zone-radius{font-size:.74rem;color:var(--slate);overflow-wrap:anywhere}
+.zone-tag{font-size:.74rem;color:var(--seafoam);margin-top:2px;overflow-wrap:anywhere}
+.row-actions{display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0}
+.row-actions button{background:none;border:none;width:auto;padding:4px 8px;margin:0;font-size:.82rem;min-height:36px}
+.row-actions .edit{color:var(--ocean)}
+.row-actions .remove{color:var(--coral)}
+.event-geo{font-size:.7rem;margin-top:3px}
 .geo-ok{color:var(--seafoam)}
 .geo-bad{color:var(--coral)}
-.tabs{display:flex;gap:6px;margin-bottom:16px}
-.tab{flex:1;background:var(--sand);color:var(--slate);border-radius:8px;padding:8px;font-size:.78rem;font-weight:600;text-align:center;cursor:pointer;width:auto;margin-bottom:0}
-.tab.active{background:var(--ocean);color:white}
-.tab-panel{display:none}
-.tab-panel.active{display:block}
+.empty{font-size:.82rem;color:var(--slate);text-align:center;margin-bottom:10px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.chip{display:inline-flex;align-items:center;gap:4px;background:var(--mist);color:var(--ink);border-radius:999px;padding:4px 4px 4px 12px;font-size:.82rem}
+.chip button{background:none;color:var(--coral);width:auto;margin:0;padding:0 8px;min-height:32px;font-size:1rem}
+.days{display:flex;flex-wrap:wrap;gap:6px}
+.day{display:inline-flex;align-items:center;gap:6px;background:var(--sand);border-radius:8px;padding:0 12px;min-height:44px;font-size:.88rem;color:var(--ink);text-transform:none;letter-spacing:0;margin:0}
+.day input{width:18px;height:18px}
+
+/* ---------- SET UP PAGE ---------- */
+.acc{margin-bottom:10px}
+.acc-head{display:flex;align-items:center;justify-content:space-between;background:var(--sand);color:var(--ink);text-align:left;font-size:.98rem;padding:14px;margin:0}
+.acc-head .count{font-weight:500;color:var(--slate);font-size:.8rem}
+.acc.open .acc-head{background:var(--ocean);color:#fff}
+.acc.open .acc-head .count{color:#DCEAF1}
+.acc-body{display:none;padding:14px 2px 4px}
+.acc.open .acc-body{display:block}
+.intro{font-size:.84rem;color:var(--slate);margin-bottom:14px}
+details.more{border-top:1px solid var(--mist);padding:10px 0;margin-top:6px}
+details.more summary{cursor:pointer;font-weight:600;font-size:.88rem;color:var(--ocean);min-height:40px;display:flex;align-items:center}
+details.more > *:not(summary){margin-top:10px}
+textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.8rem}
+
+/* ---------- ADDRESS CONFIRM ---------- */
+.overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(22,32,42,.55);display:flex;align-items:center;justify-content:center;padding:20px;z-index:1000}
+.overlay[hidden]{display:none}
+.overlay-card{background:var(--white);border-radius:18px;padding:22px 20px;max-width:420px;width:100%;max-height:100%;overflow:auto}
+#confirmFound{font-size:.9rem;color:var(--ink);overflow-wrap:anywhere}
+#confirmMap{width:100%;height:180px;border-radius:12px;margin:12px 0;background:var(--mist)}
 </style>
 </head>
 <body>
@@ -101,16 +139,10 @@ hr{border:none;border-top:1px solid var(--mist);margin:16px 0}
     <div class="dash-time" id="dashTime">—</div>
   </div>
 
-  <div class="dash-text" id="dashText"></div>
+  <div class="dash-text" id="dashText" aria-live="polite"></div>
 
   <button class="big-help" onclick="goToHelp()">I Need Help</button>
-
-  <div class="dash-links">
-    <button class="link" onclick="goToSetup()">My Places</button>
-    <button class="link" onclick="goToSchedule()">My Schedule</button>
-    <button class="link" onclick="goToContacts()">My Contacts</button>
-    <button class="link" onclick="goToImport()">Import Profile</button>
-  </div>
+  <button class="secondary" id="caregiverBtn" onclick="goToSetup()">Caregiver &mdash; Set up Treo</button>
 </div>
 
 <!-- SCREEN 2: ORIENTATION VIEW (after "I Need Help") -->
@@ -120,6 +152,7 @@ hr{border:none;border-top:1px solid var(--mist);margin:16px 0}
   <div id="map"></div>
   <div class="ground-msg" id="groundMsg"></div>
   <div class="ground-places" id="groundPlaces"></div>
+  <div class="ground-places sched" id="groundSchedule"></div>
   <div class="mismatch-box" id="mismatchBox" style="display:none"></div>
 
   <div id="guessRow" style="display:none">
@@ -147,149 +180,178 @@ hr{border:none;border-top:1px solid var(--mist);margin:16px 0}
   <button class="secondary" onclick="goHome()">&larr; Back</button>
 </div>
 
-<!-- SCREEN 3: ZONE SETUP -->
+<!-- SCREEN 3: SET UP TREO (caregiver page) -->
 <div class="card screen" id="screen-setup">
-  <h1>My Places</h1>
-  <div class="subtitle">Zones Treo will recognize</div>
-
-  <div id="zoneList"></div>
-
-  <hr>
-
-  <div class="field">
-    <label>Name</label>
-    <input type="text" id="zName" placeholder="e.g. Elm Street Plaza" />
-  </div>
-  <div class="gps-row">
-    <input type="text" id="zAddress" placeholder="Type an address..." />
-    <button class="gps" onclick="useGpsForZone()">Use My Location</button>
-  </div>
-  <div class="field">
-    <label>Radius (miles)</label>
-    <input type="text" id="zRadius" placeholder="0.25" value="0.25" />
-  </div>
-  <div class="field">
-    <label>What's here / when (optional, general note)</label>
-    <input type="text" id="zTag" placeholder="e.g. Ace Hardware, Pet Store, Safeway — Wed/Sat mornings" />
-  </div>
-  <div class="field">
-    <label>Specific destinations here (optional) — one per line: name | morning/afternoon/evening/night/anytime</label>
-    <textarea id="zDestinations" placeholder="7-Eleven | morning
-Pizza place | evening"></textarea>
-  </div>
-  <div id="setupStatus" style="font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px"></div>
-  <button onclick="saveZone()">Save Place</button>
-
-  <hr>
+  <h1>Set up Treo</h1>
+  <div class="subtitle">For the person using Treo, or the person helping them</div>
   <button class="secondary" onclick="goHome()">&larr; Back</button>
-</div>
 
-<!-- SCREEN 4: SCHEDULE -->
-<div class="card screen" id="screen-schedule">
-  <h1>My Schedule</h1>
-  <div class="subtitle">Events Treo will check against your location</div>
-
-  <div id="eventList"></div>
-
-  <hr>
-
-  <div class="tabs">
-    <div class="tab active" id="tabSingle" onclick="switchTab('single')">Add One</div>
-    <div class="tab" id="tabBulk" onclick="switchTab('bulk')">Paste Several</div>
+  <!-- 1. You -->
+  <div class="acc open" id="acc1">
+    <button class="acc-head" id="accHead1" aria-expanded="true" aria-controls="accBody1" onclick="toggleAcc(1)"><span>1 · You</span><span class="count" id="count1"></span></button>
+    <div class="acc-body" id="accBody1" role="region" aria-labelledby="accHead1">
+      <p class="intro">What should Treo call the person using it?</p>
+      <div class="field">
+        <label for="pName">Name</label>
+        <input type="text" id="pName" autocomplete="off" placeholder="e.g. Sam" />
+      </div>
+      <div class="status" id="pStatus" role="status"></div>
+      <button onclick="saveProfile()">Save name</button>
+    </div>
   </div>
 
-  <div class="tab-panel active" id="panelSingle">
-    <div class="field">
-      <label>Date</label>
-      <input type="date" id="eDate" />
+  <!-- 2. Places -->
+  <div class="acc" id="acc2">
+    <button class="acc-head" id="accHead2" aria-expanded="false" aria-controls="accBody2" onclick="toggleAcc(2)"><span>2 · Places</span><span class="count" id="count2"></span></button>
+    <div class="acc-body" id="accBody2" role="region" aria-labelledby="accHead2">
+      <p class="intro">Places Treo will recognize, like home, the shop, the clinic.</p>
+      <div id="zoneList"></div>
+      <hr>
+      <div class="subhead" id="zFormTitle">Add a place</div>
+      <div class="field">
+        <label for="zName">Name</label>
+        <input type="text" id="zName" autocomplete="off" placeholder="e.g. Elm Street Plaza" />
+      </div>
+      <div id="zAddrBlock"></div>
+      <div class="field">
+        <label for="zRadius">Radius (miles)</label>
+        <input type="text" id="zRadius" inputmode="decimal" value="0.25" />
+      </div>
+      <div class="field">
+        <label for="zTag">A note (optional)</label>
+        <input type="text" id="zTag" autocomplete="off" placeholder="e.g. Hardware store, pet store, Wed/Sat mornings" />
+      </div>
+      <div class="field">
+        <span class="lbl">Usual things here (optional)</span>
+        <div class="chips" id="zDestList"></div>
+        <div class="row2">
+          <div class="field" style="flex:2"><input type="text" id="zDestName" autocomplete="off" aria-label="Usual thing" placeholder="e.g. Pharmacy" /></div>
+          <div class="field" style="flex:1.3"><select id="zDestWhen" aria-label="When">
+            <option value="anytime">Any time</option><option value="morning">Morning</option><option value="afternoon">Afternoon</option><option value="evening">Evening</option><option value="night">Night</option>
+          </select></div>
+        </div>
+        <button class="secondary" onclick="addDest()">Add to the list</button>
+      </div>
+      <div class="status" id="zStatus" role="status"></div>
+      <button id="zSave" onclick="saveZone()">Save place</button>
+      <button class="secondary" id="zCancel" style="display:none" onclick="resetZoneForm()">Cancel</button>
     </div>
-    <div class="field">
-      <label>Time</label>
-      <input type="time" id="eTime" />
-    </div>
-    <div class="field">
-      <label>Duration (minutes)</label>
-      <input type="text" id="eDuration" placeholder="60" value="60" />
-    </div>
-    <div class="field">
-      <label>Title</label>
-      <input type="text" id="eTitle" placeholder="e.g. Dentist - checkup" />
-    </div>
-    <div class="gps-row">
-      <input type="text" id="eAddress" placeholder="Address..." />
-      <button class="gps" onclick="useGpsForEvent()">Use My Location</button>
-    </div>
-    <div id="scheduleStatus" style="font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px"></div>
-    <button onclick="saveEvent()">Save Event</button>
   </div>
 
-  <div class="tab-panel" id="panelBulk">
-    <div class="field">
-      <label>Paste events — one per line: date | time | title | address | duration (minutes, optional - defaults to 60)</label>
-      <textarea id="bulkText" placeholder="2026-11-05 | 14:00 | Dentist checkup | 123 Main St, Springfield, IL | 60
+  <!-- 3. People -->
+  <div class="acc" id="acc3">
+    <button class="acc-head" id="accHead3" aria-expanded="false" aria-controls="accBody3" onclick="toggleAcc(3)"><span>3 · People</span><span class="count" id="count3"></span></button>
+    <div class="acc-body" id="accBody3" role="region" aria-labelledby="accHead3">
+      <p class="intro">People Treo can suggest when you are near where they live.</p>
+      <div id="contactList"></div>
+      <hr>
+      <div class="subhead" id="cFormTitle">Add a person</div>
+      <div class="row2">
+        <div class="field"><label for="cFirst">First name</label><input type="text" id="cFirst" autocomplete="off" /></div>
+        <div class="field"><label for="cLast">Last name</label><input type="text" id="cLast" autocomplete="off" /></div>
+      </div>
+      <div class="field">
+        <label for="cNick">Nickname (optional)</label>
+        <input type="text" id="cNick" autocomplete="off" placeholder="Treo will say this instead of the first name" />
+      </div>
+      <div class="field">
+        <label for="cPhone">Phone (optional, lets Treo offer a direct call)</label>
+        <input type="tel" id="cPhone" autocomplete="off" placeholder="e.g. 555-555-0100" />
+      </div>
+      <div id="cAddrBlock"></div>
+      <label class="checkline"><input type="checkbox" id="cRoutine" checked />Visited routinely (Treo will suggest them when nearby)</label>
+      <div class="status" id="cStatus" role="status"></div>
+      <button id="cSave" onclick="saveContact()">Save person</button>
+      <button class="secondary" id="cCancel" style="display:none" onclick="resetContactForm()">Cancel</button>
+
+      <details class="more">
+        <summary>Paste several people</summary>
+        <div class="field">
+          <label for="bulkContactText">One per line: name | address | routine (yes/no) | phone (optional)</label>
+          <textarea id="bulkContactText" placeholder="Sarah | 45 Elm St, Springfield, IL | yes | 555-555-0100"></textarea>
+        </div>
+        <div class="status" id="bulkContactStatus" role="status"></div>
+        <button onclick="saveBulkContacts()">Add all</button>
+      </details>
+    </div>
+  </div>
+
+  <!-- 4. Regular things -->
+  <div class="acc" id="acc4">
+    <button class="acc-head" id="accHead4" aria-expanded="false" aria-controls="accBody4" onclick="toggleAcc(4)"><span>4 · Regular things</span><span class="count" id="count4"></span></button>
+    <div class="acc-body" id="accBody4" role="region" aria-labelledby="accHead4">
+      <p class="intro">Things that happen every day or on certain days, like laundry on Mondays or shopping on Wednesdays.</p>
+      <div id="regularList"></div>
+      <hr>
+      <div class="subhead" id="rFormTitle">Add a regular thing</div>
+      <div id="rForm"></div>
+    </div>
+  </div>
+
+  <!-- 5. Coming up -->
+  <div class="acc" id="acc5">
+    <button class="acc-head" id="accHead5" aria-expanded="false" aria-controls="accBody5" onclick="toggleAcc(5)"><span>5 · Coming up</span><span class="count" id="count5"></span></button>
+    <div class="acc-body" id="accBody5" role="region" aria-labelledby="accHead5">
+      <p class="intro">One-off things with a date, like an appointment.</p>
+      <div id="onceList"></div>
+      <hr>
+      <div class="subhead" id="oFormTitle">Add something coming up</div>
+      <div id="oForm"></div>
+
+      <details class="more">
+        <summary>Paste several</summary>
+        <div class="field">
+          <label for="bulkText">One per line: date | time | title | address | duration (minutes, optional, defaults to 60)</label>
+          <textarea id="bulkText" placeholder="2026-11-05 | 14:00 | Dentist checkup | 123 Main St, Springfield, IL | 60
 2026-11-07 | 09:30 | Physio | 456 Oak Ave, Springfield, IL | 45"></textarea>
+        </div>
+        <div class="status" id="bulkStatus" role="status"></div>
+        <button onclick="saveBulkEvents()">Add all</button>
+      </details>
     </div>
-    <div id="bulkStatus" style="font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px"></div>
-    <button onclick="saveBulkEvents()">Add All</button>
   </div>
+
+  <!-- Move or back up -->
+  <details class="more" id="shareBox">
+    <summary>Move or back up this setup</summary>
+    <p class="intro">A caregiver can set Treo up on their own phone, then send it to the phone that will use it. On the setup phone, copy or save the text below and send it (a message, email or file). On the other phone, open this page and paste it into Import.</p>
+    <div class="subhead">Export</div>
+    <div class="field">
+      <label for="exportText">This setup, as text</label>
+      <textarea id="exportText" class="mono" readonly style="min-height:110px"></textarea>
+    </div>
+    <div class="row2">
+      <button class="secondary" onclick="copyExport()">Copy</button>
+      <button class="secondary" onclick="saveExportFile()">Save as file</button>
+    </div>
+    <div class="status" id="exportStatus" role="status"></div>
+    <hr>
+    <div class="subhead">Import</div>
+    <div class="field">
+      <label for="importFile">Open a saved file</label>
+      <input type="file" id="importFile" accept=".json,.txt,application/json,text/plain" onchange="loadImportFile(this)" />
+    </div>
+    <div class="field">
+      <label for="importText">Or paste the setup text here</label>
+      <textarea id="importText" class="mono" style="min-height:130px" placeholder='{"userName": "...", "treoZones": [...], "treoEvents": [...], "treoContacts": [...]}'></textarea>
+    </div>
+    <div class="status" id="importStatus" role="status"></div>
+    <button id="importBtn" onclick="importProfile()">Import (replaces everything here)</button>
+  </details>
 
   <hr>
   <button class="secondary" onclick="goHome()">&larr; Back</button>
 </div>
 
-<!-- SCREEN 5: CONTACTS -->
-<div class="card screen" id="screen-contacts">
-  <h1>My Contacts</h1>
-  <div class="subtitle">People Treo can suggest when nearby</div>
-
-  <div id="contactList"></div>
-
-  <hr>
-
-  <div class="field">
-    <label>Name</label>
-    <input type="text" id="cName" placeholder="e.g. Sarah" />
+<!-- Address check: shown after a lookup, before anything is saved -->
+<div class="overlay" id="confirmOverlay" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" hidden>
+  <div class="overlay-card">
+    <h2 id="confirmTitle">Is this the right spot?</h2>
+    <div id="confirmFound"></div>
+    <div id="confirmMap"></div>
+    <button class="btn-yes" id="confirmYes">Yes, that's it</button>
+    <button class="secondary" id="confirmNo">No, go back</button>
   </div>
-  <div class="gps-row">
-    <input type="text" id="cAddress" placeholder="Address..." />
-    <button class="gps" onclick="useGpsForContact()">Use My Location</button>
-  </div>
-  <div class="field">
-    <label>Phone (optional — lets Treo offer a direct call)</label>
-    <input type="tel" id="cPhone" placeholder="e.g. 555-555-0100" />
-  </div>
-  <div class="field">
-    <label><input type="checkbox" id="cRoutine" checked style="width:auto;margin-right:6px" />Visited routinely (Treo will suggest them when nearby)</label>
-  </div>
-  <div id="contactStatus" style="font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px"></div>
-  <button onclick="saveContact()">Save Contact</button>
-
-  <hr>
-  <div class="field">
-    <label>Paste several — one per line: name | address | routine (yes/no) | phone (optional)</label>
-    <textarea id="bulkContactText" placeholder="Sarah | 45 Elm St, Springfield, IL | yes | 555-555-0100"></textarea>
-  </div>
-  <div id="bulkContactStatus" style="font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px"></div>
-  <button onclick="saveBulkContacts()">Add All</button>
-
-  <hr>
-  <button class="secondary" onclick="goHome()">&larr; Back</button>
-</div>
-
-<!-- SCREEN 6: IMPORT PROFILE -->
-<div class="card screen" id="screen-import">
-  <h1>Import a Profile</h1>
-  <div class="subtitle">Paste a profile exported from the Treo Intake tool</div>
-
-  <div class="field">
-    <label>Paste the exported JSON here</label>
-    <textarea id="importText" style="min-height:180px" placeholder='{"userName": "...", "treoZones": [...], "treoEvents": [...], "treoContacts": [...]}'></textarea>
-  </div>
-  <div id="importStatus" style="font-size:.8rem;color:var(--slate);margin-bottom:10px;min-height:18px"></div>
-  <button onclick="importProfile()">Import — Replace Current Data</button>
-
-  <hr>
-  <button class="secondary" onclick="goHome()">&larr; Back</button>
 </div>
 
 <script>
@@ -300,6 +362,8 @@ const KEY_PREFIX = 'treoBeta';
 const KEY_ZONES = KEY_PREFIX + 'Zones';
 const KEY_EVENTS = KEY_PREFIX + 'Events';
 const KEY_CONTACTS = KEY_PREFIX + 'Contacts';
+const KEY_PROFILE = KEY_PREFIX + 'Profile';     // { name }
+const KEY_DEFAULTS = KEY_PREFIX + 'Defaults';   // { city, state, zip } - last used, so they need not be retyped
 
 // Some browsers (private windows, locked-down settings) refuse to save anything. Treo still works for
 // the current visit; the home screen says so, so nobody is surprised when the data is gone next time.
@@ -312,8 +376,14 @@ function loadList(key){
     return Array.isArray(v) ? v : [];
   } catch (e) { return []; }
 }
-function persist(key, list){
-  try { localStorage.setItem(key, JSON.stringify(list)); }
+function loadObj(key){
+  try {
+    const v = JSON.parse(localStorage.getItem(key) || '{}');
+    return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+  } catch (e) { return {}; }
+}
+function persist(key, value){
+  try { localStorage.setItem(key, JSON.stringify(value)); }
   catch (e) { storageOk = false; }
 }
 // Makes anything a person typed safe to place inside page markup.
@@ -324,80 +394,119 @@ function esc(s){
 let zones = loadList(KEY_ZONES);
 let events = loadList(KEY_EVENTS);
 let contacts = loadList(KEY_CONTACTS);
+let profile = loadObj(KEY_PROFILE);
+let defaults = loadObj(KEY_DEFAULTS);
 
-// Home-screen hint. Shown on the first visit (nothing saved yet), and if this browser can't save anything.
-function updateDashTip(){
-  const el = document.getElementById('dashText');
+function $(id){ return document.getElementById(id); }
+function val(id){ const el = $(id); return el ? el.value.trim() : ''; }
+function setVal(id, v){ const el = $(id); if (el) el.value = (v == null ? '' : v); }
+function setStatus(id, text, isError){
+  const el = $(id);
   if (!el) return;
-  if (!storageOk) {
-    el.textContent = "This browser won't let Treo save anything (a private window can do this). Treo works for now, but what you add will be gone next time. Open Treo in a regular browser window to keep your places.";
-  } else if (zones.length === 0 && events.length === 0 && contacts.length === 0) {
-    el.textContent = 'Welcome to the Treo beta. To try it: tap My Places, tap Use My Location to save where you are right now, then come back and tap I Need Help.';
-  } else {
-    el.textContent = '';
-  }
+  el.textContent = text || '';
+  el.className = 'status' + (isError ? ' error' : '');
+}
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+/* ---------- Dates and times ---------- */
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const PART_HOURS = { morning: [5, 11], afternoon: [11, 17], evening: [17, 21] }; // same cut-offs as the time-of-day buckets below
+
+// Today's date as YYYY-MM-DD in the device's local time (toISOString() is UTC, which flips to
+// "tomorrow" in the late afternoon in California and made evening events miss).
+function localDateStr(d){
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function timeStrToMinutes(t){
+  if (!t) return null;
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+function fmtTime(t){
+  const mins = timeStrToMinutes(t);
+  if (mins == null || isNaN(mins)) return String(t || '');
+  return new Date(2000, 0, 1, Math.floor(mins / 60), mins % 60).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+function parseLocalDate(s){
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ''));
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
+}
+function fmtDate(s){
+  const d = parseLocalDate(s);
+  return d ? d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : String(s || '');
+}
+function monFirst(a, b){ return ((a + 6) % 7) - ((b + 6) % 7); }
+
+/* ---------- Scheduled things (one-off and regular) ---------- */
+// An item is { title, repeat: 'once' | 'daily' | 'weekly', date, days:[0-6], time, part, duration, address, lat, lon, placeRef }.
+// Items saved before regular things existed have no "repeat" and count as one-off.
+function eventOccursOn(e, d){
+  const rep = e.repeat || 'once';
+  if (rep === 'daily') return true;
+  if (rep === 'weekly') return Array.isArray(e.days) && e.days.includes(d.getDay());
+  return e.date === localDateStr(d);
+}
+function eventDuration(e){
+  const n = (e.duration != null && e.duration !== '') ? Number(e.duration) : 60;
+  return isNaN(n) ? 60 : n;
+}
+function isAllDay(e){ return !e.time && !(e.part && PART_HOURS[e.part]); }
+// Minutes since midnight when the item starts and ends (no grace period).
+function eventWindow(e){
+  if (e.time) { const s = timeStrToMinutes(e.time); return [s, s + eventDuration(e)]; }
+  if (e.part && PART_HOURS[e.part]) return [PART_HOURS[e.part][0] * 60, PART_HOURS[e.part][1] * 60];
+  return [0, 1440];
 }
 
-function importProfile(){
-  const raw = document.getElementById('importText').value.trim();
-  const status = document.getElementById('importStatus');
-  if (!raw) { status.textContent = 'Paste an exported profile first.'; status.className = 'error'; return; }
-  let data;
-  try {
-    data = JSON.parse(raw);
-  } catch (e) {
-    status.textContent = 'That doesn\'t look like valid JSON - check it was copied in full.';
-    status.className = 'error';
-    return;
-  }
-  if (!data || typeof data !== 'object') {
-    status.textContent = 'That doesn\'t look like a Treo profile.';
-    status.className = 'error';
-    return;
-  }
-  zones = Array.isArray(data.treoZones) ? data.treoZones : [];
-  events = Array.isArray(data.treoEvents) ? data.treoEvents : [];
-  contacts = Array.isArray(data.treoContacts) ? data.treoContacts : [];
-  persist(KEY_ZONES, zones);
-  persist(KEY_EVENTS, events);
-  persist(KEY_CONTACTS, contacts);
-  renderZones(); renderEvents(); renderContacts();
-  status.textContent = 'Imported: ' + zones.length + ' place(s), ' + events.length + ' event(s), ' + contacts.length + ' contact(s). This replaced whatever was there before.';
-  status.className = '';
-}
+const EVENT_GRACE_MINUTES = 15; // window opens 15 min before start, stays open 15 min after the event's duration ends
 
-
-let currentLat = null, currentLon = null;
-let leafletMap = null, userMarker = null, zoneMarker = null;
-const SCHEDULE_MATCH_RADIUS = 0.15; // miles - tighter than a general zone, since it's a specific appointment address
-
-function showScreen(id){
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-}
-function goHome(){ updateDashTip(); showScreen('screen-home'); }
-function goToSetup(){ renderZones(); showScreen('screen-setup'); }
-function goToSchedule(){ renderEvents(); showScreen('screen-schedule'); }
-function goToContacts(){ renderContacts(); showScreen('screen-contacts'); }
-function goToImport(){ showScreen('screen-import'); }
-
-function switchTab(which){
-  document.getElementById('tabSingle').classList.toggle('active', which==='single');
-  document.getElementById('tabBulk').classList.toggle('active', which==='bulk');
-  document.getElementById('panelSingle').classList.toggle('active', which==='single');
-  document.getElementById('panelBulk').classList.toggle('active', which==='bulk');
-}
-
-/* ---------- DASHBOARD live clock ---------- */
-function updateDashboardClock(){
+// Is this item's scheduled window active right now, regardless of where the person actually is?
+function isEventActiveNow(e){
   const now = new Date();
-  const dateEl = document.getElementById('dashDate');
-  const timeEl = document.getElementById('dashTime');
-  if (dateEl) dateEl.textContent = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-  if (timeEl) timeEl.textContent = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  if (!eventOccursOn(e, now)) return false;
+  if (isAllDay(e)) return true; // no time specified - treat as active all day once the date matches
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  if (e.time) {
+    const startMin = timeStrToMinutes(e.time);
+    return nowMin >= (startMin - EVENT_GRACE_MINUTES) && nowMin <= (startMin + eventDuration(e) + EVENT_GRACE_MINUTES);
+  }
+  const w = eventWindow(e);
+  return nowMin >= w[0] && nowMin < w[1];
 }
-updateDashboardClock();
-setInterval(updateDashboardClock, 15000);
+
+// Find today's item(s) whose time window is active right now (time-based, not location-based).
+function findActiveEvents(){
+  return events.filter(isEventActiveNow);
+}
+
+const SCHEDULE_MATCH_RADIUS = 0.15; // miles - tighter than a general zone, since it's a specific appointment address
+const CONTACT_MATCH_RADIUS = 0.2;   // miles - how close counts as "near" a contact's address
+
+// Where is this item supposed to happen? A saved place or person is looked up fresh each time (so editing
+// the place moves the item with it); a typed address uses the position found when it was saved.
+// Returns null when there is no usable position - the item is then simply "on the schedule", with no place check.
+function resolveEventPlace(e){
+  if (e.placeRef && e.placeRef.name) {
+    const isContact = e.placeRef.type === 'contact';
+    const p = (isContact ? contacts : zones).find(x => x.name === e.placeRef.name && x.lat != null && x.lon != null);
+    if (!p) return null;
+    return { lat: p.lat, lon: p.lon, label: p.name,
+             radius: isContact ? CONTACT_MATCH_RADIUS : Math.max(Number(p.radius) || 0, SCHEDULE_MATCH_RADIUS) };
+  }
+  if (e.lat != null && e.lon != null) return { lat: e.lat, lon: e.lon, label: e.address || '', radius: SCHEDULE_MATCH_RADIUS };
+  return null;
+}
+function eventPlaceLabel(e){
+  if (e.placeRef && e.placeRef.name) return e.placeRef.name;
+  return e.address || '';
+}
+// Does the current location match a specific item's place?
+function locationMatchesEvent(lat, lon, e){
+  const pl = resolveEventPlace(e);
+  if (!pl) return false;
+  return haversineDistance(lat, lon, pl.lat, pl.lon) <= pl.radius;
+}
 
 function toRad(deg){ return deg * Math.PI / 180; }
 function haversineDistance(lat1, lon1, lat2, lon2){
@@ -414,45 +523,6 @@ function findMatchingZone(lat, lon){
   }
   return null;
 }
-
-const EVENT_GRACE_MINUTES = 15; // window opens 15 min before start, stays open 15 min after the event's duration ends
-
-function timeStrToMinutes(t){
-  if (!t) return null;
-  const [h, m] = t.split(':').map(Number);
-  return h * 60 + m;
-}
-
-// Today's date as YYYY-MM-DD in the device's local time (toISOString() is UTC, which flips to
-// "tomorrow" in the late afternoon in California and made evening events miss).
-function localDateStr(d){
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-}
-
-// Is this event's scheduled window active right now, regardless of where the person actually is?
-function isEventActiveNow(e){
-  const now = new Date();
-  const todayStr = localDateStr(now);
-  if (e.date !== todayStr) return false;
-  if (!e.time) return true; // no time specified - treat as active all day once the date matches
-  const startMin = timeStrToMinutes(e.time);
-  const duration = (e.duration != null && e.duration !== '') ? Number(e.duration) : 60;
-  const nowMin = now.getHours() * 60 + now.getMinutes();
-  return nowMin >= (startMin - EVENT_GRACE_MINUTES) && nowMin <= (startMin + duration + EVENT_GRACE_MINUTES);
-}
-
-// Find today's event(s) whose time window is active right now (time-based, not location-based).
-function findActiveEvents(){
-  return events.filter(isEventActiveNow);
-}
-
-// Does the current location match a specific event's saved address?
-function locationMatchesEvent(lat, lon, e){
-  if (e.lat == null || e.lon == null) return false;
-  return haversineDistance(lat, lon, e.lat, e.lon) <= SCHEDULE_MATCH_RADIUS;
-}
-
-const CONTACT_MATCH_RADIUS = 0.2; // miles - how close counts as "near" a contact's address
 
 function getTimeOfDayBucket(){
   const h = new Date().getHours();
@@ -495,11 +565,154 @@ function findAnyContactNearby(lat, lon, excludeName){
   return null;
 }
 
-async function tryGeocode(query){
-  const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(query));
+/* ---------- People: what Treo says ---------- */
+// The short name Treo says: the nickname if there is one, otherwise the first name.
+// People saved before first/last existed keep the single name they were saved with.
+function displayName(c){
+  if (c.first) {
+    const full = [c.first, c.last].filter(Boolean).join(' ');
+    return c.nick ? full + ' (' + c.nick + ')' : full;
+  }
+  return c.name || '';
+}
+
+/* ---------- Words for a scheduled item ---------- */
+function describeRepeat(e){
+  const rep = e.repeat || 'once';
+  if (rep === 'daily') return 'Every day';
+  if (rep === 'weekly') {
+    const d = (e.days || []).slice().sort(monFirst);
+    if (d.length >= 7) return 'Every day';
+    if (d.length === 1) return DAY_NAMES[d[0]] + 's';
+    return d.map(i => DAY_SHORT[i]).join(', ');
+  }
+  return e.date ? fmtDate(e.date) : '';
+}
+function describeTime(e){
+  if (e.time) return fmtTime(e.time);
+  if (e.part && PART_HOURS[e.part]) return e.part.charAt(0).toUpperCase() + e.part.slice(1);
+  return 'All day';
+}
+// "at 2:00 PM" / "this morning" / "" - for sentences.
+function whenPhrase(e){
+  if (e.time) return ' at ' + fmtTime(e.time);
+  if (e.part && PART_HOURS[e.part]) return ' this ' + e.part;
+  return '';
+}
+
+/* ---------- Home screen: now / next ---------- */
+// What is on right now, or coming next. Timed things come first; an all-day item is shown as "Today" if nothing
+// else is left today; otherwise the next thing on a later day (looking a week ahead).
+function findNowOrNext(){
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  let current = null, today = null, allDay = null, later = null;
+  for (let d = 0; d <= 7; d++) {
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d);
+    for (const e of events) {
+      if (!eventOccursOn(e, day)) continue;
+      const w = eventWindow(e);
+      if (d === 0) {
+        if (isAllDay(e)) { if (!allDay) allDay = e; continue; }
+        if (isEventActiveNow(e)) { if (!current || w[0] < current.start) current = { e, start: w[0] }; continue; }
+        if (w[0] > nowMin && (!today || w[0] < today.start)) today = { e, start: w[0] };
+      } else {
+        const key = d * 1440 + w[0];
+        if (!later || key < later.key) later = { e, d, key, day };
+      }
+    }
+  }
+  if (current) return { kind: 'now', e: current.e };
+  if (today) return { kind: 'today', e: today.e };
+  if (allDay) return { kind: 'allday', e: allDay };
+  if (later) return { kind: 'later', e: later.e, d: later.d, day: later.day };
+  return null;
+}
+function nowNextLines(){
+  const item = findNowOrNext();
+  if (!item) return null;
+  const e = item.e, place = eventPlaceLabel(e);
+  const parts = [];
+  if (item.kind === 'now') {
+    parts.push('Now: ' + e.title);
+    if (e.time) parts.push(fmtTime(e.time));
+  } else if (item.kind === 'today') {
+    parts.push('Next: ' + e.title);
+    parts.push(e.time ? fmtTime(e.time) + ' today' : 'this ' + e.part);
+  } else if (item.kind === 'allday') {
+    parts.push('Today: ' + e.title);
+  } else {
+    parts.push('Next: ' + e.title);
+    const dayWord = item.d === 1 ? 'Tomorrow' : DAY_NAMES[item.day.getDay()];
+    parts.push(dayWord + (e.time ? ' ' + fmtTime(e.time) : (e.part ? ' ' + e.part : '')));
+  }
+  return { main: parts.join(' · '), sub: place ? 'at ' + place : '' };
+}
+
+// Home-screen text: a hello, what is on now/next, and a hint on the first visit or if this browser can't save anything.
+function updateDashTip(){
+  const el = $('dashText');
+  if (!el) return;
+  el.textContent = '';
+  const add = (cls, text) => { const d = document.createElement('div'); d.className = cls; d.textContent = text; el.appendChild(d); };
+  if (!storageOk) {
+    add('dash-sub', "This browser won't let Treo save anything (a private window can do this). Treo works for now, but what you add will be gone next time. Open Treo in a regular browser window to keep your places.");
+  } else if (zones.length === 0 && events.length === 0 && contacts.length === 0) {
+    add('dash-sub', 'Welcome to the Treo beta. To try it: tap Caregiver, open Places, tap Use My Location to save where you are right now, then come back and tap I Need Help.');
+    return;
+  }
+  if (profile.name) add('dash-hello', 'Hello, ' + profile.name);
+  const lines = nowNextLines();
+  if (lines) {
+    add('dash-main', lines.main);
+    if (lines.sub) add('dash-sub', lines.sub);
+  } else if (events.length > 0) {
+    add('dash-sub', 'Nothing coming up on the schedule.');
+  }
+}
+
+/* ---------- Moving between screens ---------- */
+let currentLat = null, currentLon = null;
+let leafletMap = null, userMarker = null, zoneMarker = null;
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  $(id).classList.add('active');
+}
+function goHome(){ updateDashTip(); showScreen('screen-home'); }
+function goToSetup(){ refreshSetup(); showScreen('screen-setup'); window.scrollTo(0, 0); }
+
+/* ---------- DASHBOARD live clock ---------- */
+function updateDashboardClock(){
+  const now = new Date();
+  const dateEl = $('dashDate');
+  const timeEl = $('dashTime');
+  if (dateEl) dateEl.textContent = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  if (timeEl) timeEl.textContent = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+updateDashboardClock();
+setInterval(() => {
+  updateDashboardClock();
+  if ($('screen-home').classList.contains('active')) updateDashTip();
+}, 15000);
+
+/* ---------- Address lookup ---------- */
+// The free lookup service allows about one request a second. Every lookup waits its turn here.
+let lastLookupAt = 0;
+async function lookupThrottle(){
+  const wait = lastLookupAt + 1100 - Date.now();
+  if (wait > 0) await sleep(wait);
+  lastLookupAt = Date.now();
+}
+async function nominatim(queryString){
+  await lookupThrottle();
+  const res = await fetch('https://nominatim.openstreetmap.org/search?' + queryString);
   const data = await res.json();
   if (!data.length) return null;
-  return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+  return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon), display: data[0].display_name || '' };
+}
+async function tryGeocode(query){
+  return nominatim('format=json&limit=1&q=' + encodeURIComponent(query));
 }
 
 async function geocodeAddress(address){
@@ -516,12 +729,23 @@ async function geocodeAddress(address){
   if (commaIndex !== -1) {
     const stripped = address.slice(commaIndex + 1).trim();
     if (/^\d+[A-Za-z]?\s/.test(stripped)) {
-      await new Promise(r => setTimeout(r, 1100)); // be polite to the free lookup service
       result = await tryGeocode(stripped);
       if (result) return result;
     }
   }
   return null;
+}
+// Street, city, state and zip typed separately. Asks the service for them as separate parts first (more exact),
+// then as one line of text.
+async function geocodeParts(a){
+  const p = new URLSearchParams({ format: 'json', limit: '1' });
+  if (a.street) p.set('street', a.street);
+  if (a.city) p.set('city', a.city);
+  if (a.state) p.set('state', a.state);
+  if (a.zip) p.set('postalcode', a.zip);
+  const r = await nominatim(p.toString());
+  if (r) return r;
+  return geocodeAddress(addrString(a));
 }
 function getGpsPosition(){
   return new Promise((resolve, reject) => {
@@ -534,21 +758,147 @@ function getGpsPosition(){
   });
 }
 
-/* ---------- SCREEN 2: HELP FLOW ---------- */
+/* ---------- Address block (street, city, state, zip) ---------- */
+const pendingGps = {}; // prefix -> { lat, lon } when "Use My Location" was tapped
+
+function addrBlockHTML(p){
+  return '<div class="field"><label for="' + p + 'Street">Street</label>' +
+      '<input type="text" id="' + p + 'Street" autocomplete="off" placeholder="e.g. 123 Main St" oninput="addrTyped(\'' + p + '\')" /></div>' +
+    '<div class="row2">' +
+      '<div class="field" style="flex:2"><label for="' + p + 'City">City</label><input type="text" id="' + p + 'City" autocomplete="off" oninput="addrTyped(\'' + p + '\')" /></div>' +
+      '<div class="field" style="flex:1"><label for="' + p + 'State">State</label><input type="text" id="' + p + 'State" autocomplete="off" maxlength="30" oninput="addrTyped(\'' + p + '\')" /></div>' +
+      '<div class="field" style="flex:1.2"><label for="' + p + 'Zip">Zip</label><input type="text" id="' + p + 'Zip" inputmode="numeric" autocomplete="off" maxlength="12" oninput="addrTyped(\'' + p + '\')" /></div>' +
+    '</div>' +
+    '<button type="button" class="gps" onclick="useGps(\'' + p + '\')">Use My Location</button>' +
+    '<div class="gps-note" id="' + p + 'GpsNote" role="status"></div>';
+}
+function readAddr(p){
+  return { street: val(p + 'Street'), city: val(p + 'City'), state: val(p + 'State'), zip: val(p + 'Zip') };
+}
+function writeAddr(p, a){
+  a = a || {};
+  setVal(p + 'Street', a.street); setVal(p + 'City', a.city); setVal(p + 'State', a.state); setVal(p + 'Zip', a.zip);
+}
+function addrString(a){
+  return [a.street, a.city, [a.state, a.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+}
+function addrIsEmpty(a){ return !(a.street || a.city || a.state || a.zip); }
+function sameAddr(a, b){
+  b = b || {};
+  return (a.street || '') === (b.street || '') && (a.city || '') === (b.city || '') && (a.state || '') === (b.state || '') && (a.zip || '') === (b.zip || '');
+}
+// Fill city, state and zip with the last ones used, if the person hasn't typed anything there.
+function applyDefaults(p){
+  if (!val(p + 'City') && defaults.city) setVal(p + 'City', defaults.city);
+  if (!val(p + 'State') && defaults.state) setVal(p + 'State', defaults.state);
+  if (!val(p + 'Zip') && defaults.zip) setVal(p + 'Zip', defaults.zip);
+}
+function rememberDefaults(a){
+  if (!(a.city || a.state || a.zip)) return;
+  defaults = { city: a.city || '', state: a.state || '', zip: a.zip || '' };
+  persist(KEY_DEFAULTS, defaults);
+}
+function addrTyped(p){
+  if (pendingGps[p]) { pendingGps[p] = null; $(p + 'GpsNote').textContent = ''; }
+}
+async function useGps(p){
+  const note = $(p + 'GpsNote');
+  note.className = 'gps-note';
+  note.textContent = 'Getting current location...';
+  try {
+    const pos = await getGpsPosition();
+    pendingGps[p] = pos;
+    writeAddr(p, {});
+    note.textContent = 'Using your current location (' + pos.lat.toFixed(5) + ', ' + pos.lon.toFixed(5) + '). No address needed.';
+  } catch (e) {
+    pendingGps[p] = null;
+    note.textContent = 'Could not get current location: ' + e.message;
+  }
+}
+function clearGps(p){ pendingGps[p] = null; const n = $(p + 'GpsNote'); if (n) n.textContent = ''; }
+
+// Looks the address up, then asks "Is this the right spot?" on a small map before anything is saved.
+// Returns { geo } when confirmed, { unlocated: true } when the lookup failed and the caller allows saving without a position,
+// or null when nothing should be saved (error already shown, or the person said No).
+async function resolveAddress(a, statusId, allowUnlocated){
+  if (!a.street) { setStatus(statusId, 'Add the street (like 123 Main St), or tap Use My Location.', true); return null; }
+  setStatus(statusId, 'Looking up that address...');
+  let geo;
+  try {
+    geo = await geocodeParts(a);
+  } catch (e) {
+    if (allowUnlocated) { setStatus(statusId, 'Could not reach address lookup (no connection) - saved without a map position for now.', true); return { unlocated: true }; }
+    setStatus(statusId, 'Could not reach address lookup (no connection). Nothing was saved.', true);
+    return null;
+  }
+  if (!geo) {
+    if (allowUnlocated) { setStatus(statusId, 'Address not found - saved, but it will not be recognized by location until fixed.', true); return { unlocated: true }; }
+    setStatus(statusId, 'Could not find that address. Check the street, city, state and zip, or tap Use My Location.', true);
+    return null;
+  }
+  setStatus(statusId, '');
+  const ok = await confirmAddress(geo);
+  if (!ok) { setStatus(statusId, 'Not saved. Change the address and try again.', true); return null; }
+  return { geo };
+}
+
+let confirmMapObj = null, confirmMarker = null, confirmResolve = null;
+function confirmAddress(geo){
+  return new Promise((resolve) => {
+    $('confirmFound').textContent = 'Found: ' + (geo.display || (geo.lat.toFixed(5) + ', ' + geo.lon.toFixed(5)));
+    const overlay = $('confirmOverlay');
+    overlay.hidden = false;
+    confirmResolve = (answer) => {
+      confirmResolve = null;
+      overlay.hidden = true;
+      resolve(answer);
+    };
+    showConfirmMap(geo.lat, geo.lon);
+    $('confirmYes').focus();
+  });
+}
+function showConfirmMap(lat, lon){
+  const box = $('confirmMap');
+  if (typeof L === 'undefined') {
+    box.textContent = 'Map not available right now';
+    box.classList.add('map-missing');
+    return;
+  }
+  try {
+    if (!confirmMapObj) {
+      box.textContent = '';
+      box.classList.remove('map-missing');
+      confirmMapObj = L.map('confirmMap', { zoomControl: false, attributionControl: false });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(confirmMapObj);
+    }
+    confirmMapObj.setView([lat, lon], 16);
+    if (confirmMarker) confirmMapObj.removeLayer(confirmMarker);
+    confirmMarker = L.circleMarker([lat, lon], { radius: 9, color: '#D95F3B', fillColor: '#D95F3B', fillOpacity: 1 }).addTo(confirmMapObj);
+    setTimeout(() => { if (confirmMapObj) confirmMapObj.invalidateSize(); }, 150);
+  } catch (e) {
+    console.log('Confirm map could not be drawn:', e);
+  }
+}
+$('confirmYes').addEventListener('click', () => { if (confirmResolve) confirmResolve(true); });
+$('confirmNo').addEventListener('click', () => { if (confirmResolve) confirmResolve(false); });
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && confirmResolve) confirmResolve(false); });
+
+/* ---------- Help flow ---------- */
 let cascadeStage = null; // null | 'destination' | 'contact'
 let currentGuessTarget = null;
 
 function goToHelp(){
   showScreen('screen-help');
-  document.getElementById('checkRow').style.display = 'none';
-  document.getElementById('guessRow').style.display = 'none';
-  document.getElementById('handoffBox').style.display = 'none';
-  document.getElementById('groundMsg').textContent = '';
-  document.getElementById('groundPlaces').textContent = '';
-  document.getElementById('mismatchBox').style.display = 'none';
+  $('checkRow').style.display = 'none';
+  $('guessRow').style.display = 'none';
+  $('handoffBox').style.display = 'none';
+  $('groundMsg').textContent = '';
+  $('groundPlaces').textContent = '';
+  $('groundSchedule').textContent = '';
+  $('mismatchBox').style.display = 'none';
   cascadeStage = null;
   currentGuessTarget = null;
-  const status = document.getElementById('groundStatus');
+  const status = $('groundStatus');
   status.textContent = 'Locating...';
   status.className = 'ground-status';
 
@@ -571,9 +921,9 @@ function goToHelp(){
 function showGuess(stage, target, label, showCall){
   cascadeStage = stage;
   currentGuessTarget = target;
-  document.getElementById('checkRow').style.display = 'none';
-  document.getElementById('guessLabel').textContent = label;
-  const callLink = document.getElementById('guessCallLink');
+  $('checkRow').style.display = 'none';
+  $('guessLabel').textContent = label;
+  const callLink = $('guessCallLink');
   if (showCall && target && target.phone) {
     callLink.href = 'tel:' + target.phone.replace(/[^0-9+]/g, '');
     callLink.textContent = 'Call ' + target.name;
@@ -581,62 +931,71 @@ function showGuess(stage, target, label, showCall){
   } else {
     callLink.style.display = 'none';
   }
-  document.getElementById('guessRow').style.display = 'block';
+  $('guessRow').style.display = 'block';
 }
 
 function renderGrounding(){
-  const status = document.getElementById('groundStatus');
-  const msg = document.getElementById('groundMsg');
-  const places = document.getElementById('groundPlaces');
-  const mismatchBox = document.getElementById('mismatchBox');
+  const status = $('groundStatus');
+  const msg = $('groundMsg');
+  const places = $('groundPlaces');
+  const sched = $('groundSchedule');
+  const mismatchBox = $('mismatchBox');
   const now = new Date();
   const dayName = now.toLocaleDateString('en-US', { weekday: 'long' });
   const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   status.textContent = dayName + ', ' + timeStr;
   mismatchBox.style.display = 'none';
   mismatchBox.textContent = '';
-  document.getElementById('guessRow').style.display = 'none';
+  sched.textContent = '';
+  $('guessRow').style.display = 'none';
   cascadeStage = null;
   currentGuessTarget = null;
 
   const matchedZone = findMatchingZone(currentLat, currentLon);
   const activeEvents = findActiveEvents();
-  const activeEventHere = activeEvents.find(e => locationMatchesEvent(currentLat, currentLon, e));
-  const activeEventElsewhere = activeEvents.find(e => !locationMatchesEvent(currentLat, currentLon, e));
+  // Only an item with a usable position can be "here" or "elsewhere". An item with no place (or one whose
+  // position isn't known) is simply on the schedule - it must not trigger the different-place warning.
+  const located = activeEvents.filter(e => resolveEventPlace(e));
+  const unlocated = activeEvents.filter(e => !resolveEventPlace(e));
+  const activeEventHere = located.find(e => locationMatchesEvent(currentLat, currentLon, e));
+  const activeEventElsewhere = located.find(e => !locationMatchesEvent(currentLat, currentLon, e));
 
   // Zone name + the scheduled event, in one line.
   if (activeEventHere) {
-    const timeLabel = activeEventHere.time ? ' at ' + activeEventHere.time : '';
     const whereLabel = matchedZone ? matchedZone.name : 'this area';
-    msg.textContent = "You're in " + whereLabel + ". You have " + activeEventHere.title + timeLabel + '.';
-    places.textContent = activeEventHere.address || '';
+    msg.textContent = "You're in " + whereLabel + ". You have " + activeEventHere.title + whenPhrase(activeEventHere) + '.';
+    places.textContent = eventPlaceLabel(activeEventHere);
   } else if (matchedZone) {
     msg.textContent = "You're at " + matchedZone.name + '.';
     places.textContent = matchedZone.tag || '';
   } else if (zones.length === 0) {
-    msg.textContent = "You haven't saved any places yet. Add one under My Places, and Treo can tell you when you're there.";
+    msg.textContent = "You haven't saved any places yet. Add one under Caregiver, Places, and Treo can tell you when you're there.";
     places.textContent = '';
   } else {
     msg.textContent = "You're not at one of your saved places right now.";
     places.textContent = '';
   }
 
+  if (unlocated.length) {
+    sched.textContent = 'On your schedule now: ' + unlocated.map(e => e.title + whenPhrase(e)).join('; ');
+  }
+
   if (activeEventElsewhere) {
-    const timeLabel = activeEventElsewhere.time ? ' at ' + esc(activeEventElsewhere.time) : '';
     const whereNow = matchedZone ? matchedZone.name : "a location that doesn't match a saved place";
-    mismatchBox.innerHTML = '<span class="mismatch-label">Scheduled now, different place</span>You have <strong>' + esc(activeEventElsewhere.title) + '</strong>' + timeLabel +
-      (activeEventElsewhere.address ? ' at ' + esc(activeEventElsewhere.address) : '') +
+    const placeLabel = eventPlaceLabel(activeEventElsewhere);
+    mismatchBox.innerHTML = '<span class="mismatch-label">Scheduled now, different place</span>You have <strong>' + esc(activeEventElsewhere.title) + '</strong>' + esc(whenPhrase(activeEventElsewhere)) +
+      (placeLabel ? ' at ' + esc(placeLabel) : '') +
       ' — but it looks like you\'re at ' + esc(whereNow) + '.';
     mismatchBox.style.display = 'block';
   }
 
   drawMapSafely(matchedZone, activeEventHere, activeEventElsewhere);
 
-  // Cascade: an active scheduled event always takes priority and just uses the plain Yes/No below.
+  // Cascade: an active scheduled event with a place always takes priority and just uses the plain Yes/No below.
   // Otherwise, try a ranked "best guess" - best destination within a matched zone first
   // (e.g. a zone with several possible stops), then a nearby routine contact.
   if (activeEventHere || activeEventElsewhere) {
-    document.getElementById('checkRow').style.display = 'block';
+    $('checkRow').style.display = 'block';
     return;
   }
 
@@ -661,14 +1020,14 @@ function renderGrounding(){
     }
   }
 
-  document.getElementById('checkRow').style.display = 'block';
+  $('checkRow').style.display = 'block';
 }
 
 function guessResponse(yes){
-  document.getElementById('guessRow').style.display = 'none';
+  $('guessRow').style.display = 'none';
 
   if (yes) {
-    document.getElementById('groundStatus').textContent = 'Good — glad that helped.';
+    $('groundStatus').textContent = 'Good — glad that helped.';
     cascadeStage = null;
     currentGuessTarget = null;
     return;
@@ -704,13 +1063,13 @@ function guessResponse(yes){
   // No more tiers left - fall to the plain Does this help? on the base message already shown.
   cascadeStage = null;
   currentGuessTarget = null;
-  document.getElementById('checkRow').style.display = 'block';
+  $('checkRow').style.display = 'block';
 }
 
 // The map is a nice-to-have: if its library never loaded (offline before it was ever saved), say so
 // in the map box and carry on, so the Yes/No buttons below still appear.
 function drawMapSafely(matchedZone, matchedEvent, mismatchEvent){
-  const mapBox = document.getElementById('map');
+  const mapBox = $('map');
   if (typeof L === 'undefined') {
     mapBox.textContent = 'Map not available right now';
     mapBox.classList.add('map-missing');
@@ -733,12 +1092,14 @@ function drawMap(matchedZone, matchedEvent, mismatchEvent){
 
   if (zoneMarker) { leafletMap.removeLayer(zoneMarker); zoneMarker = null; }
 
-  if (mismatchEvent && mismatchEvent.lat != null) {
+  const mismatchPlace = mismatchEvent ? resolveEventPlace(mismatchEvent) : null;
+  const matchedPlace = matchedEvent ? resolveEventPlace(matchedEvent) : null;
+  if (mismatchPlace) {
     // Show both where they are AND where they're supposed to be, so neither is off-screen.
-    zoneMarker = L.circle([mismatchEvent.lat, mismatchEvent.lon], { radius: SCHEDULE_MATCH_RADIUS * 1609.34, color: '#D95F3B', fillColor: '#D95F3B', fillOpacity: 0.2 }).addTo(leafletMap);
-    leafletMap.fitBounds([[currentLat, currentLon], [mismatchEvent.lat, mismatchEvent.lon]], { padding: [30, 30] });
-  } else if (matchedEvent) {
-    zoneMarker = L.circle([matchedEvent.lat, matchedEvent.lon], { radius: SCHEDULE_MATCH_RADIUS * 1609.34, color: '#C89A3C', fillColor: '#C89A3C', fillOpacity: 0.15 }).addTo(leafletMap);
+    zoneMarker = L.circle([mismatchPlace.lat, mismatchPlace.lon], { radius: mismatchPlace.radius * 1609.34, color: '#D95F3B', fillColor: '#D95F3B', fillOpacity: 0.2 }).addTo(leafletMap);
+    leafletMap.fitBounds([[currentLat, currentLon], [mismatchPlace.lat, mismatchPlace.lon]], { padding: [30, 30] });
+  } else if (matchedPlace) {
+    zoneMarker = L.circle([matchedPlace.lat, matchedPlace.lon], { radius: matchedPlace.radius * 1609.34, color: '#C89A3C', fillColor: '#C89A3C', fillOpacity: 0.15 }).addTo(leafletMap);
     leafletMap.setView([currentLat, currentLon], 15);
   } else if (matchedZone) {
     zoneMarker = L.circle([matchedZone.lat, matchedZone.lon], { radius: matchedZone.radius * 1609.34, color: '#1A8A76', fillColor: '#1A8A76', fillOpacity: 0.15 }).addTo(leafletMap);
@@ -750,316 +1111,305 @@ function drawMap(matchedZone, matchedEvent, mismatchEvent){
 }
 
 function helpResponse(helped){
-  document.getElementById('checkRow').style.display = 'none';
+  $('checkRow').style.display = 'none';
   if (helped) {
-    document.getElementById('groundStatus').textContent = 'Good — glad that helped.';
+    $('groundStatus').textContent = 'Good — glad that helped.';
   } else {
-    document.getElementById('handoffBox').style.display = 'block';
+    $('handoffBox').style.display = 'block';
   }
 }
 
-/* ---------- SCREEN 3: ZONE SETUP ---------- */
+/* =====================================================================
+   SET UP TREO
+   ===================================================================== */
+const editing = { zone: null, person: null, regular: null, once: null }; // index being edited, or null when adding
+
+function toggleAcc(n){
+  for (let i = 1; i <= 5; i++) {
+    const open = (i === n) && !$('acc' + i).classList.contains('open');
+    $('acc' + i).classList.toggle('open', open);
+    $('accHead' + i).setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  applyAllDefaults();
+}
+// City, state and zip last used are filled in wherever an address is asked for and nothing is typed yet.
+function applyAllDefaults(){ ['z', 'c', 'ra', 'oa'].forEach(applyDefaults); }
+// Remove needs two taps, so a slip of the finger doesn't delete something.
+function armRemove(btn, fn){
+  if (btn.dataset.armed) { fn(); return; }
+  btn.dataset.armed = '1';
+  btn.textContent = 'Tap again to remove';
+  setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = 'Remove'; } }, 3000);
+}
+function rowActions(kind, i){
+  return '<div class="row-actions"><button class="edit" onclick="edit' + kind + '(' + i + ')">Edit</button>' +
+         '<button class="remove" onclick="armRemove(this, () => remove' + kind + '(' + i + '))">Remove</button></div>';
+}
+
+function refreshSetup(){
+  setVal('pName', profile.name || '');
+  renderZones(); renderContacts(); renderEventLists();
+  refreshPlacePickers();
+  refreshCounts();
+  applyAllDefaults();
+  fillExport();
+}
+function refreshCounts(){
+  const regular = events.filter(e => (e.repeat || 'once') !== 'once').length;
+  $('count1').textContent = profile.name ? profile.name : '';
+  $('count2').textContent = zones.length ? zones.length + ' saved' : '';
+  $('count3').textContent = contacts.length ? contacts.length + ' saved' : '';
+  $('count4').textContent = regular ? regular + ' saved' : '';
+  $('count5').textContent = (events.length - regular) ? (events.length - regular) + ' saved' : '';
+}
+
+/* ---------- 1. You ---------- */
+function saveProfile(){
+  const name = val('pName');
+  profile = { name };
+  persist(KEY_PROFILE, profile);
+  setStatus('pStatus', name ? 'Saved.' : 'Name cleared.');
+  refreshCounts();
+}
+
+/* ---------- 2. Places ---------- */
+let formDests = [];
+const WHEN_LABEL = { anytime: 'any time', morning: 'morning', afternoon: 'afternoon', evening: 'evening', night: 'night' };
+
+function renderDestList(){
+  $('zDestList').innerHTML = formDests.map((d, i) =>
+    '<span class="chip">' + esc(d.name) + ' (' + esc(WHEN_LABEL[d.pattern] || d.pattern) + ')<button aria-label="Remove ' + esc(d.name) + '" onclick="removeDest(' + i + ')">&times;</button></span>'
+  ).join('');
+}
+function addDest(){
+  const name = val('zDestName');
+  if (!name) return;
+  formDests.push({ name, pattern: $('zDestWhen').value || 'anytime' });
+  setVal('zDestName', '');
+  renderDestList();
+}
+function removeDest(i){ formDests.splice(i, 1); renderDestList(); }
+
 function renderZones(){
-  const list = document.getElementById('zoneList');
+  const list = $('zoneList');
   if (zones.length === 0) {
-    list.innerHTML = '<div style="font-size:.82rem;color:var(--slate);text-align:center;margin-bottom:10px">No places set up yet.</div>';
+    list.innerHTML = '<div class="empty">No places set up yet.</div>';
     return;
   }
   list.innerHTML = zones.map((z, i) => {
     const destLine = (z.destinations && z.destinations.length)
       ? '<div class="zone-tag">' + z.destinations.map(d => esc(d.name) + ' (' + esc(d.pattern) + ')').join(', ') + '</div>'
       : '';
+    const addr = z.street ? addrString(z) : (z.address || '');
     const geoLine = (z.lat == null)
-      ? '<div class="event-geo geo-bad">Location not found - will not match' + (z.address ? ': ' + esc(z.address) : '') + '</div>'
+      ? '<div class="event-geo geo-bad">Location not found - will not match' + (addr ? ': ' + esc(addr) : '') + '</div>'
       : '';
-    return '<div class="zone-row"><div><div class="zone-name">' + esc(z.name) + '</div><div class="zone-radius">' + esc(z.radius) + ' mile radius</div>' +
+    return '<div class="zone-row"><div class="info"><div class="zone-name">' + esc(z.name) + '</div>' +
+    (addr ? '<div class="zone-radius">' + esc(addr) + '</div>' : '') +
+    '<div class="zone-radius">' + esc(z.radius) + ' mile radius</div>' +
     (z.tag ? '<div class="zone-tag">' + esc(z.tag) + '</div>' : '') + destLine + geoLine +
-    '</div><button class="zone-remove" onclick="removeZone(' + i + ')">Remove</button></div>';
+    '</div>' + rowActions('Zone', i) + '</div>';
   }).join('');
+}
+
+function resetZoneForm(){
+  editing.zone = null;
+  setVal('zName', ''); writeAddr('z', {}); applyDefaults('z');
+  setVal('zRadius', '0.25'); setVal('zTag', '');
+  formDests = []; setVal('zDestName', ''); $('zDestWhen').value = 'anytime'; renderDestList();
+  clearGps('z');
+  $('zFormTitle').textContent = 'Add a place';
+  $('zSave').textContent = 'Save place';
+  $('zCancel').style.display = 'none';
+  setStatus('zStatus', '');
+}
+function editZone(i){
+  const z = zones[i];
+  if (!z) return;
+  editing.zone = i;
+  setVal('zName', z.name); writeAddr('z', z);
+  setVal('zRadius', z.radius); setVal('zTag', z.tag || '');
+  formDests = (z.destinations || []).map(d => ({ name: d.name, pattern: d.pattern || 'anytime' }));
+  renderDestList(); clearGps('z');
+  $('zFormTitle').textContent = 'Edit place';
+  $('zSave').textContent = 'Save changes';
+  $('zCancel').style.display = 'block';
+  setStatus('zStatus', z.street ? '' : 'The address was not saved with this place. Leave it blank to keep the current spot, or type an address to move it.');
+  $('zFormTitle').scrollIntoView({ block: 'start' });
 }
 function removeZone(i){
   zones.splice(i, 1);
   persist(KEY_ZONES, zones);
-  renderZones();
+  if (editing.zone === i) resetZoneForm(); else if (editing.zone > i) editing.zone--;
+  renderZones(); refreshPlacePickers(); refreshCounts();
 }
 
-let pendingZoneGps = null;
-async function useGpsForZone(){
-  const status = document.getElementById('setupStatus');
-  status.textContent = 'Getting current location...';
-  status.className = '';
-  try {
-    const pos = await getGpsPosition();
-    pendingZoneGps = pos;
-    document.getElementById('zAddress').value = '';
-    document.getElementById('zAddress').placeholder = 'Current location captured (' + pos.lat.toFixed(5) + ', ' + pos.lon.toFixed(5) + ')';
-    status.textContent = 'Location captured. Fill in the rest and save.';
-    status.className = '';
-  } catch (e) {
-    status.textContent = 'Could not get current location: ' + e.message;
-    status.className = 'error';
-  }
-}
-
-function parseDestinationsInput(){
-  const raw = document.getElementById('zDestinations').value.trim();
-  if (!raw) return [];
-  const validPatterns = ['morning', 'afternoon', 'evening', 'night', 'anytime'];
-  return raw.split('\n').map(l => l.trim()).filter(l => l).map(line => {
-    const parts = line.split('|').map(p => p.trim());
-    const name = parts[0] || line;
-    let pattern = (parts[1] || 'anytime').toLowerCase();
-    if (!validPatterns.includes(pattern)) pattern = 'anytime';
-    return { name, pattern };
-  });
-}
-
+let saving = false;
 async function saveZone(){
-  const name = document.getElementById('zName').value.trim();
-  const addressInput = document.getElementById('zAddress').value.trim();
-  const radius = parseFloat(document.getElementById('zRadius').value);
-  const tag = document.getElementById('zTag').value.trim();
-  const status = document.getElementById('setupStatus');
+  if (saving) return;
+  const name = val('zName');
+  const a = readAddr('z');
+  const radius = parseFloat(val('zRadius'));
+  const tag = val('zTag');
 
-  if (!name) { status.textContent = 'Enter a name for this place.'; status.className = 'error'; return; }
-  if (isNaN(radius) || radius <= 0) { status.textContent = 'Enter a valid radius in miles.'; status.className = 'error'; return; }
+  if (!name) { setStatus('zStatus', 'Enter a name for this place.', true); return; }
+  if (isNaN(radius) || radius <= 0) { setStatus('zStatus', 'Enter a valid radius in miles.', true); return; }
+  const isEdit = editing.zone != null;
+  const old = isEdit ? zones[editing.zone] : null;
 
-  let lat, lon;
-
-  if (pendingZoneGps) {
-    lat = pendingZoneGps.lat;
-    lon = pendingZoneGps.lon;
-  } else if (addressInput) {
-    status.textContent = 'Looking up that address...';
-    status.className = '';
-    try {
-      const geo = await geocodeAddress(addressInput);
-      if (!geo) {
-        status.textContent = 'Could not find that address. Try adding city/state, or use "Use My Location" instead.';
-        status.className = 'error';
-        return;
+  saving = true;
+  try {
+    let lat, lon, pieces;
+    if (pendingGps.z) {
+      lat = pendingGps.z.lat; lon = pendingGps.z.lon; pieces = {};
+    } else if (!addrIsEmpty(a)) {
+      pieces = a;
+      if (isEdit && old && old.lat != null && sameAddr(a, old)) {
+        lat = old.lat; lon = old.lon; // address untouched - no new lookup
+      } else {
+        const r = await resolveAddress(a, 'zStatus', false);
+        if (!r) return;
+        lat = r.geo.lat; lon = r.geo.lon;
       }
-      lat = geo.lat; lon = geo.lon;
-    } catch (e) {
-      status.textContent = 'Could not reach address lookup (no connection).';
-      status.className = 'error';
+    } else if (isEdit && old && old.lat != null) {
+      lat = old.lat; lon = old.lon; pieces = { street: old.street, city: old.city, state: old.state, zip: old.zip };
+    } else {
+      setStatus('zStatus', 'Enter an address or tap "Use My Location."', true);
       return;
     }
-  } else {
-    status.textContent = 'Enter an address or tap "Use My Location."';
-    status.className = 'error';
-    return;
-  }
 
-  zones.push({ name, lat, lon, radius, tag, destinations: parseDestinationsInput() });
-  persist(KEY_ZONES, zones);
-  renderZones();
-  status.textContent = 'Saved.';
-  status.className = '';
-  document.getElementById('zName').value = '';
-  document.getElementById('zAddress').value = '';
-  document.getElementById('zAddress').placeholder = 'Type an address...';
-  document.getElementById('zTag').value = '';
-  document.getElementById('zDestinations').value = '';
-  pendingZoneGps = null;
-}
+    const destName = val('zDestName');
+    if (destName) { formDests.push({ name: destName, pattern: $('zDestWhen').value || 'anytime' }); setVal('zDestName', ''); }
 
-/* ---------- SCREEN 4: SCHEDULE ---------- */
-function renderEvents(){
-  const list = document.getElementById('eventList');
-  if (events.length === 0) {
-    list.innerHTML = '<div style="font-size:.82rem;color:var(--slate);text-align:center;margin-bottom:10px">No events scheduled yet.</div>';
-    return;
-  }
-  const sorted = events.map((e,i) => ({...e, _i:i})).sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
-  list.innerHTML = sorted.map(e => {
-    const dur = (e.duration != null && e.duration !== '') ? e.duration : 60;
-    const endLabel = e.time ? ' (' + esc(dur) + ' min)' : '';
-    return '<div class="event-row"><div class="event-top"><div><div class="event-title">' + esc(e.title) + '</div>' +
-    '<div class="event-when">' + esc(e.date) + (e.time ? ' at ' + esc(e.time) : '') + endLabel + '</div>' +
-    (e.address ? '<div class="event-addr">' + esc(e.address) + '</div>' : '') +
-    '<div class="event-geo ' + (e.lat != null ? 'geo-ok' : 'geo-bad') + '">' + (e.lat != null ? 'Location found' : 'Location not found - will not match') + '</div>' +
-    '</div><button class="zone-remove" onclick="removeEvent(' + e._i + ')">Remove</button></div></div>';
-  }).join('');
-}
-function removeEvent(i){
-  events.splice(i, 1);
-  persist(KEY_EVENTS, events);
-  renderEvents();
-}
-
-let pendingEventGps = null;
-async function useGpsForEvent(){
-  const status = document.getElementById('scheduleStatus');
-  status.textContent = 'Getting current location...';
-  status.className = '';
-  try {
-    const pos = await getGpsPosition();
-    pendingEventGps = pos;
-    document.getElementById('eAddress').value = '';
-    document.getElementById('eAddress').placeholder = 'Current location captured (' + pos.lat.toFixed(5) + ', ' + pos.lon.toFixed(5) + ')';
-    status.textContent = 'Location captured. Fill in the rest and save.';
-    status.className = '';
-  } catch (e) {
-    status.textContent = 'Could not get current location: ' + e.message;
-    status.className = 'error';
-  }
-}
-
-async function saveEvent(){
-  const date = document.getElementById('eDate').value;
-  const time = document.getElementById('eTime').value;
-  const durationInput = document.getElementById('eDuration').value.trim();
-  const duration = durationInput ? parseInt(durationInput, 10) : 60;
-  const title = document.getElementById('eTitle').value.trim();
-  const addressInput = document.getElementById('eAddress').value.trim();
-  const status = document.getElementById('scheduleStatus');
-
-  if (!date) { status.textContent = 'Pick a date.'; status.className = 'error'; return; }
-  if (!title) { status.textContent = 'Enter a title.'; status.className = 'error'; return; }
-
-  let lat = null, lon = null;
-
-  if (pendingEventGps) {
-    lat = pendingEventGps.lat; lon = pendingEventGps.lon;
-  } else if (addressInput) {
-    status.textContent = 'Looking up that address...';
-    status.className = '';
-    try {
-      const geo = await geocodeAddress(addressInput);
-      if (geo) { lat = geo.lat; lon = geo.lon; }
-      else { status.textContent = 'Address not found - event saved, but it will not be recognized by location until fixed.'; status.className = 'error'; }
-    } catch (e) {
-      status.textContent = 'Could not reach address lookup - event saved without a location match for now.';
-      status.className = 'error';
+    const zone = { name, lat, lon, radius, tag, destinations: formDests.map(d => ({ name: d.name, pattern: d.pattern })) };
+    if (pieces && (pieces.street || pieces.city || pieces.state || pieces.zip)) {
+      zone.street = pieces.street || ''; zone.city = pieces.city || ''; zone.state = pieces.state || ''; zone.zip = pieces.zip || '';
+      zone.address = addrString(zone);
+      rememberDefaults(zone);
+    } else if (old && old.address && !pendingGps.z) {
+      zone.address = old.address;
     }
-  }
-
-  events.push({ date, time, duration, title, address: addressInput, lat, lon });
-  persist(KEY_EVENTS, events);
-  renderEvents();
-  if (!status.className.includes('error')) { status.textContent = 'Saved.'; status.className = ''; }
-  document.getElementById('eDate').value = '';
-  document.getElementById('eTime').value = '';
-  document.getElementById('eDuration').value = '60';
-  document.getElementById('eTitle').value = '';
-  document.getElementById('eAddress').value = '';
-  document.getElementById('eAddress').placeholder = 'Address...';
-  pendingEventGps = null;
-}
-
-async function saveBulkEvents(){
-  const raw = document.getElementById('bulkText').value.trim();
-  const status = document.getElementById('bulkStatus');
-  if (!raw) { status.textContent = 'Paste at least one line.'; status.className = 'error'; return; }
-
-  const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-  let added = 0, failed = 0;
-
-  for (const line of lines) {
-    const parts = line.split('|').map(p => p.trim());
-    if (parts.length < 3) { failed++; continue; }
-    const [date, time, title, address, durationRaw] = parts;
-    const duration = durationRaw ? parseInt(durationRaw, 10) : 60;
-    let lat = null, lon = null;
-    if (address) {
-      status.textContent = 'Looking up: ' + title + '...';
-      try {
-        const geo = await geocodeAddress(address);
-        if (geo) { lat = geo.lat; lon = geo.lon; }
-        await new Promise(r => setTimeout(r, 1100)); // be polite to the free lookup service - one request/sec
-      } catch (e) { /* leave lat/lon null, event still gets added */ }
+    if (isEdit) {
+      if (old && old.name !== name) renameRefs('zone', old.name, name);
+      zones[editing.zone] = zone;
+    } else {
+      zones.push(zone);
     }
-    events.push({ date, time: time || '', duration, title: title || 'Untitled', address: address || '', lat, lon });
-    added++;
-  }
-
-  persist(KEY_EVENTS, events);
-  renderEvents();
-  status.textContent = added + ' event(s) added' + (failed > 0 ? ', ' + failed + ' line(s) could not be read (need at least date | time | title)' : '') + '.';
-  status.className = failed > 0 ? 'error' : '';
-  document.getElementById('bulkText').value = '';
+    persist(KEY_ZONES, zones);
+    renderZones(); refreshPlacePickers(); refreshCounts(); renderEventLists();
+    resetZoneForm();
+    setStatus('zStatus', 'Saved.');
+  } finally { saving = false; }
 }
 
-/* ---------- SCREEN 5: CONTACTS ---------- */
+/* ---------- 3. People ---------- */
 function renderContacts(){
-  const list = document.getElementById('contactList');
+  const list = $('contactList');
   if (contacts.length === 0) {
-    list.innerHTML = '<div style="font-size:.82rem;color:var(--slate);text-align:center;margin-bottom:10px">No contacts saved yet.</div>';
+    list.innerHTML = '<div class="empty">No people saved yet.</div>';
     return;
   }
-  list.innerHTML = contacts.map((c, i) =>
-    '<div class="zone-row"><div><div class="zone-name">' + esc(c.name) + '</div>' +
-    (c.address ? '<div class="zone-radius">' + esc(c.address) + '</div>' : '') +
+  list.innerHTML = contacts.map((c, i) => {
+    const addr = c.street ? addrString(c) : (c.address || '');
+    return '<div class="zone-row"><div class="info"><div class="zone-name">' + esc(displayName(c)) + '</div>' +
+    (addr ? '<div class="zone-radius">' + esc(addr) + '</div>' : '') +
     (c.phone ? '<div class="zone-radius">' + esc(c.phone) + '</div>' : '') +
     '<div class="zone-tag">' + (c.routine ? 'Visited routinely' : 'Occasional') + (c.lat == null ? ' - location not found' : '') + '</div>' +
-    '</div><button class="zone-remove" onclick="removeContact(' + i + ')">Remove</button></div>'
-  ).join('');
+    '</div>' + rowActions('Contact', i) + '</div>';
+  }).join('');
+}
+function resetContactForm(){
+  editing.person = null;
+  ['cFirst', 'cLast', 'cNick', 'cPhone'].forEach(id => setVal(id, ''));
+  writeAddr('c', {}); applyDefaults('c');
+  $('cRoutine').checked = true;
+  clearGps('c');
+  $('cFormTitle').textContent = 'Add a person';
+  $('cSave').textContent = 'Save person';
+  $('cCancel').style.display = 'none';
+  setStatus('cStatus', '');
+}
+function editContact(i){
+  const c = contacts[i];
+  if (!c) return;
+  editing.person = i;
+  let first = c.first, last = c.last;
+  if (!first) { // saved before first/last existed: split the single name
+    const bits = String(c.name || '').trim().split(/\s+/);
+    first = bits.shift() || ''; last = bits.join(' ');
+  }
+  setVal('cFirst', first); setVal('cLast', last); setVal('cNick', c.nick || ''); setVal('cPhone', c.phone || '');
+  writeAddr('c', c);
+  $('cRoutine').checked = !!c.routine;
+  clearGps('c');
+  $('cFormTitle').textContent = 'Edit person';
+  $('cSave').textContent = 'Save changes';
+  $('cCancel').style.display = 'block';
+  setStatus('cStatus', c.street ? '' : 'Leave the address blank to keep the current spot, or type an address to move it.');
+  $('cFormTitle').scrollIntoView({ block: 'start' });
 }
 function removeContact(i){
   contacts.splice(i, 1);
   persist(KEY_CONTACTS, contacts);
-  renderContacts();
-}
-
-let pendingContactGps = null;
-async function useGpsForContact(){
-  const status = document.getElementById('contactStatus');
-  status.textContent = 'Getting current location...';
-  status.className = '';
-  try {
-    const pos = await getGpsPosition();
-    pendingContactGps = pos;
-    document.getElementById('cAddress').value = '';
-    document.getElementById('cAddress').placeholder = 'Current location captured (' + pos.lat.toFixed(5) + ', ' + pos.lon.toFixed(5) + ')';
-    status.textContent = 'Location captured. Fill in the rest and save.';
-    status.className = '';
-  } catch (e) {
-    status.textContent = 'Could not get current location: ' + e.message;
-    status.className = 'error';
-  }
+  if (editing.person === i) resetContactForm(); else if (editing.person > i) editing.person--;
+  renderContacts(); refreshPlacePickers(); refreshCounts(); renderEventLists();
 }
 
 async function saveContact(){
-  const name = document.getElementById('cName').value.trim();
-  const addressInput = document.getElementById('cAddress').value.trim();
-  const phone = document.getElementById('cPhone').value.trim();
-  const routine = document.getElementById('cRoutine').checked;
-  const status = document.getElementById('contactStatus');
+  if (saving) return;
+  const first = val('cFirst'), last = val('cLast'), nick = val('cNick'), phone = val('cPhone');
+  const routine = $('cRoutine').checked;
+  const a = readAddr('c');
+  if (!first) { setStatus('cStatus', 'Enter a first name.', true); return; }
+  const isEdit = editing.person != null;
+  const old = isEdit ? contacts[editing.person] : null;
 
-  if (!name) { status.textContent = 'Enter a name.'; status.className = 'error'; return; }
-
-  let lat = null, lon = null;
-  if (pendingContactGps) {
-    lat = pendingContactGps.lat; lon = pendingContactGps.lon;
-  } else if (addressInput) {
-    status.textContent = 'Looking up that address...';
-    status.className = '';
-    try {
-      const geo = await geocodeAddress(addressInput);
-      if (geo) { lat = geo.lat; lon = geo.lon; }
-      else { status.textContent = 'Address not found - saved, but will not be recognized by location until fixed.'; status.className = 'error'; }
-    } catch (e) {
-      status.textContent = 'Could not reach address lookup - saved without a location match for now.';
-      status.className = 'error';
+  saving = true;
+  try {
+    let lat = null, lon = null, pieces = {};
+    let note = null;
+    if (pendingGps.c) {
+      lat = pendingGps.c.lat; lon = pendingGps.c.lon;
+    } else if (!addrIsEmpty(a)) {
+      pieces = a;
+      if (isEdit && old && old.lat != null && sameAddr(a, old)) {
+        lat = old.lat; lon = old.lon;
+      } else {
+        const r = await resolveAddress(a, 'cStatus', true);
+        if (!r) return;
+        if (r.geo) { lat = r.geo.lat; lon = r.geo.lon; } else { note = 'unlocated'; }
+      }
+    } else if (isEdit && old && old.lat != null) {
+      lat = old.lat; lon = old.lon; pieces = { street: old.street, city: old.city, state: old.state, zip: old.zip };
     }
-  }
 
-  contacts.push({ name, address: addressInput, phone, routine, lat, lon });
-  persist(KEY_CONTACTS, contacts);
-  renderContacts();
-  if (!status.className.includes('error')) { status.textContent = 'Saved.'; status.className = ''; }
-  document.getElementById('cName').value = '';
-  document.getElementById('cAddress').value = '';
-  document.getElementById('cAddress').placeholder = 'Address...';
-  document.getElementById('cPhone').value = '';
-  pendingContactGps = null;
+    const person = { first, last, nick, name: nick || first, phone, routine, lat, lon };
+    if (pieces.street || pieces.city || pieces.state || pieces.zip) {
+      person.street = pieces.street || ''; person.city = pieces.city || ''; person.state = pieces.state || ''; person.zip = pieces.zip || '';
+      person.address = addrString(person);
+      rememberDefaults(person);
+    } else if (old && old.address && !pendingGps.c) {
+      person.address = old.address;
+    } else {
+      person.address = '';
+    }
+    if (isEdit) {
+      if (old && old.name !== person.name) renameRefs('contact', old.name, person.name);
+      contacts[editing.person] = person;
+    } else {
+      contacts.push(person);
+    }
+    persist(KEY_CONTACTS, contacts);
+    renderContacts(); refreshPlacePickers(); refreshCounts(); renderEventLists();
+    const warn = note === 'unlocated' ? $('cStatus').textContent : '';
+    resetContactForm();
+    setStatus('cStatus', warn || 'Saved.', !!warn);
+  } finally { saving = false; }
 }
 
 async function saveBulkContacts(){
-  const raw = document.getElementById('bulkContactText').value.trim();
-  const status = document.getElementById('bulkContactStatus');
-  if (!raw) { status.textContent = 'Paste at least one line.'; status.className = 'error'; return; }
+  const raw = val('bulkContactText');
+  if (!raw) { setStatus('bulkContactStatus', 'Paste at least one line.', true); return; }
 
   const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   let added = 0, failed = 0;
@@ -1071,11 +1421,10 @@ async function saveBulkContacts(){
     const routine = !routineRaw || routineRaw.toLowerCase().startsWith('y');
     let lat = null, lon = null;
     if (address) {
-      status.textContent = 'Looking up: ' + name + '...';
+      setStatus('bulkContactStatus', 'Looking up: ' + name + '...');
       try {
         const geo = await geocodeAddress(address);
         if (geo) { lat = geo.lat; lon = geo.lon; }
-        await new Promise(r => setTimeout(r, 1100));
       } catch (e) { /* leave lat/lon null, contact still gets added */ }
     }
     contacts.push({ name, address: address || '', phone: phone || '', routine, lat, lon });
@@ -1083,16 +1432,351 @@ async function saveBulkContacts(){
   }
 
   persist(KEY_CONTACTS, contacts);
-  renderContacts();
-  status.textContent = added + ' contact(s) added' + (failed > 0 ? ', ' + failed + ' line(s) could not be read (need at least a name)' : '') + '.';
-  status.className = failed > 0 ? 'error' : '';
-  document.getElementById('bulkContactText').value = '';
+  renderContacts(); refreshPlacePickers(); refreshCounts();
+  setStatus('bulkContactStatus', added + ' person(s) added' + (failed > 0 ? ', ' + failed + ' line(s) could not be read (need at least a name)' : '') + '.', failed > 0);
+  setVal('bulkContactText', '');
 }
 
-renderZones();
-renderEvents();
-renderContacts();
+/* ---------- 4 and 5. Regular things / Coming up ---------- */
+// p is 'r' (regular things) or 'o' (coming up). Both forms are built from the same pieces.
+function eventFormHTML(p){
+  const regular = p === 'r';
+  return '' +
+  '<div class="field"><label for="' + p + 'Title">What</label><input type="text" id="' + p + 'Title" autocomplete="off" placeholder="' + (regular ? 'e.g. Laundry' : 'e.g. Dentist - checkup') + '" /></div>' +
+  (regular
+    ? '<div class="field"><label for="rRepeat">How often</label><select id="rRepeat" onchange="toggleRepeat()"><option value="daily">Every day</option><option value="weekly">Certain days of the week</option></select></div>' +
+      '<div class="field" id="rDaysBox" style="display:none"><span class="lbl">Which days</span><div class="days" id="rDays">' +
+        [1, 2, 3, 4, 5, 6, 0].map(d => '<label class="day"><input type="checkbox" name="rDay" value="' + d + '" />' + DAY_SHORT[d] + '</label>').join('') +
+      '</div></div>'
+    : '<div class="field"><label for="oDate">Date</label><input type="date" id="oDate" /></div>') +
+  '<div class="field"><label for="' + p + 'When">When in the day</label><select id="' + p + 'When" onchange="toggleWhen(\'' + p + '\')">' +
+    '<option value="exact">At a time</option><option value="morning">Morning</option><option value="afternoon">Afternoon</option><option value="evening">Evening</option><option value="allday">All day</option></select></div>' +
+  '<div class="row2" id="' + p + 'TimeBox"><div class="field"><label for="' + p + 'Time">Time</label><input type="time" id="' + p + 'Time" /></div>' +
+    '<div class="field"><label for="' + p + 'Duration">Minutes</label><input type="text" id="' + p + 'Duration" inputmode="numeric" value="60" /></div></div>' +
+  '<div class="field"><label for="' + p + 'Place">Where</label><select id="' + p + 'Place" onchange="togglePlaceAddr(\'' + p + '\')"></select></div>' +
+  '<div id="' + p + 'PlaceAddr" style="display:none">' + addrBlockHTML(p + 'a') + '</div>' +
+  '<div class="status" id="' + p + 'Status" role="status"></div>' +
+  '<button id="' + p + 'Save" onclick="saveEventForm(\'' + p + '\')">' + (regular ? 'Save regular thing' : 'Save') + '</button>' +
+  '<button class="secondary" id="' + p + 'Cancel" style="display:none" onclick="resetEventForm(\'' + p + '\')">Cancel</button>';
+}
+function toggleRepeat(){ $('rDaysBox').style.display = $('rRepeat').value === 'weekly' ? 'block' : 'none'; }
+function toggleWhen(p){ $(p + 'TimeBox').style.display = $(p + 'When').value === 'exact' ? 'flex' : 'none'; }
+function togglePlaceAddr(p){ $(p + 'PlaceAddr').style.display = $(p + 'Place').value === 'typed' ? 'block' : 'none'; }
+
+function placeOptionsHTML(){
+  let h = '<option value="none">No place</option>';
+  if (zones.length) h += '<optgroup label="My Places">' + zones.map((z, i) => '<option value="z:' + i + '">' + esc(z.name) + '</option>').join('') + '</optgroup>';
+  if (contacts.length) h += '<optgroup label="People">' + contacts.map((c, i) => '<option value="c:' + i + '">' + esc(displayName(c)) + '</option>').join('') + '</optgroup>';
+  return h + '<option value="typed">Type an address...</option>';
+}
+function selectedPlaceRef(p){
+  const v = $(p + 'Place').value;
+  if (v.startsWith('z:') && zones[+v.slice(2)]) return { type: 'zone', name: zones[+v.slice(2)].name };
+  if (v.startsWith('c:') && contacts[+v.slice(2)]) return { type: 'contact', name: contacts[+v.slice(2)].name };
+  return null;
+}
+function setPlaceSelect(p, ref){
+  const sel = $(p + 'Place');
+  if (ref) {
+    const list = ref.type === 'contact' ? contacts : zones;
+    const idx = list.findIndex(x => x.name === ref.name);
+    if (idx >= 0) { sel.value = (ref.type === 'contact' ? 'c:' : 'z:') + idx; togglePlaceAddr(p); return; }
+  }
+  sel.value = 'none';
+  togglePlaceAddr(p);
+}
+// Rebuild the "Where" lists after places or people change, keeping whatever was picked.
+function refreshPlacePickers(){
+  ['r', 'o'].forEach(p => {
+    const sel = $(p + 'Place');
+    if (!sel) return;
+    const wasTyped = sel.value === 'typed';
+    const ref = selectedPlaceRef(p);
+    sel.innerHTML = placeOptionsHTML();
+    if (wasTyped) { sel.value = 'typed'; togglePlaceAddr(p); } else setPlaceSelect(p, ref);
+  });
+}
+// A place or person was renamed: keep the things that point at it pointing at it.
+function renameRefs(type, oldName, newName){
+  let changed = false;
+  events.forEach(e => { if (e.placeRef && e.placeRef.type === type && e.placeRef.name === oldName) { e.placeRef.name = newName; changed = true; } });
+  if (changed) persist(KEY_EVENTS, events);
+}
+
+function renderEventLists(){
+  const todayStr = localDateStr(new Date());
+  const tagged = events.map((e, i) => ({ e, i }));
+  const regular = tagged.filter(x => (x.e.repeat || 'once') !== 'once');
+  const once = tagged.filter(x => (x.e.repeat || 'once') === 'once').sort((a, b) => ((a.e.date || '') + (a.e.time || '')).localeCompare((b.e.date || '') + (b.e.time || '')));
+
+  const row = (x, isOnce) => {
+    const e = x.e;
+    const bits = [describeRepeat(e), describeTime(e)];
+    const place = eventPlaceLabel(e);
+    if (place) bits.push('at ' + place);
+    const resolved = resolveEventPlace(e);
+    const hasPlace = !!(e.placeRef || e.address || e.lat != null);
+    let geo = '';
+    if (hasPlace) geo = resolved
+      ? '<div class="event-geo geo-ok">Location found</div>'
+      : '<div class="event-geo geo-bad">' + (e.placeRef ? 'That place is no longer saved - will not match' : 'Location not found - will not match') + '</div>';
+    const past = isOnce && e.date && e.date < todayStr;
+    return '<div class="zone-row' + (past ? ' past' : '') + '"><div class="info"><div class="zone-name">' + esc(e.title) + (past ? ' (past)' : '') + '</div>' +
+      '<div class="zone-radius">' + bits.map(esc).join(' · ') + '</div>' + geo + '</div>' + rowActions(isOnce ? 'Once' : 'Regular', x.i) + '</div>';
+  };
+  $('regularList').innerHTML = regular.length ? regular.map(x => row(x, false)).join('') : '<div class="empty">No regular things yet.</div>';
+  $('onceList').innerHTML = once.length ? once.map(x => row(x, true)).join('') : '<div class="empty">Nothing coming up yet.</div>';
+}
+
+function resetEventForm(p){
+  const kind = p === 'r' ? 'regular' : 'once';
+  editing[kind] = null;
+  setVal(p + 'Title', '');
+  if (p === 'r') { $('rRepeat').value = 'daily'; document.querySelectorAll('input[name=rDay]').forEach(c => { c.checked = false; }); toggleRepeat(); }
+  else setVal('oDate', '');
+  $(p + 'When').value = 'exact'; toggleWhen(p);
+  setVal(p + 'Time', ''); setVal(p + 'Duration', '60');
+  $(p + 'Place').value = 'none'; togglePlaceAddr(p);
+  writeAddr(p + 'a', {}); applyDefaults(p + 'a'); clearGps(p + 'a');
+  $(p + 'Cancel').style.display = 'none';
+  $(p + 'Save').textContent = p === 'r' ? 'Save regular thing' : 'Save';
+  $(p === 'r' ? 'rFormTitle' : 'oFormTitle').textContent = p === 'r' ? 'Add a regular thing' : 'Add something coming up';
+  setStatus(p + 'Status', '');
+}
+function editRegular(i){ loadEventIntoForm('r', i); }
+function editOnce(i){ loadEventIntoForm('o', i); }
+function loadEventIntoForm(p, i){
+  const e = events[i];
+  if (!e) return;
+  resetEventForm(p);
+  editing[p === 'r' ? 'regular' : 'once'] = i;
+  setVal(p + 'Title', e.title);
+  if (p === 'r') {
+    $('rRepeat').value = e.repeat === 'weekly' ? 'weekly' : 'daily'; toggleRepeat();
+    document.querySelectorAll('input[name=rDay]').forEach(c => { c.checked = (e.days || []).includes(+c.value); });
+  } else {
+    setVal('oDate', e.date);
+  }
+  if (e.time) { $(p + 'When').value = 'exact'; setVal(p + 'Time', e.time); setVal(p + 'Duration', eventDuration(e)); }
+  else if (e.part && PART_HOURS[e.part]) $(p + 'When').value = e.part;
+  else $(p + 'When').value = 'allday';
+  toggleWhen(p);
+  if (e.placeRef) setPlaceSelect(p, e.placeRef);
+  else if (e.address) {
+    $(p + 'Place').value = 'typed'; togglePlaceAddr(p);
+    if (e.street) writeAddr(p + 'a', e); else writeAddr(p + 'a', { street: e.address });
+  }
+  $(p + 'Cancel').style.display = 'block';
+  $(p + 'Save').textContent = 'Save changes';
+  $(p === 'r' ? 'rFormTitle' : 'oFormTitle').textContent = p === 'r' ? 'Edit regular thing' : 'Edit this item';
+  setStatus(p + 'Status', (e.address && !e.street && !e.placeRef) ? 'Check the address: it was saved as one line. Change it only if you want to move it.' : '');
+  $(p === 'r' ? 'rFormTitle' : 'oFormTitle').scrollIntoView({ block: 'start' });
+}
+function removeRegular(i){ removeEventAt(i); }
+function removeOnce(i){ removeEventAt(i); }
+function removeEventAt(i){
+  events.splice(i, 1);
+  persist(KEY_EVENTS, events);
+  ['regular', 'once'].forEach(k => { if (editing[k] === i) resetEventForm(k === 'regular' ? 'r' : 'o'); else if (editing[k] > i) editing[k]--; });
+  renderEventLists(); refreshCounts();
+}
+
+async function saveEventForm(p){
+  if (saving) return;
+  const kind = p === 'r' ? 'regular' : 'once';
+  const title = val(p + 'Title');
+  const statusId = p + 'Status';
+  if (!title) { setStatus(statusId, 'Enter what it is.', true); return; }
+
+  let repeat = 'once', date = '', days = [];
+  if (p === 'r') {
+    repeat = $('rRepeat').value;
+    if (repeat === 'weekly') {
+      days = Array.from(document.querySelectorAll('input[name=rDay]:checked')).map(c => +c.value).sort(monFirst);
+      if (!days.length) { setStatus(statusId, 'Tick at least one day.', true); return; }
+    }
+  } else {
+    date = $('oDate').value;
+    if (!date) { setStatus(statusId, 'Pick a date.', true); return; }
+  }
+
+  const when = $(p + 'When').value;
+  let time = '', part = '', duration = 60;
+  if (when === 'exact') {
+    time = $(p + 'Time').value;
+    if (!time) { setStatus(statusId, 'Pick a time, or choose morning, afternoon, evening or all day.', true); return; }
+    const d = parseInt(val(p + 'Duration'), 10);
+    duration = (isNaN(d) || d <= 0) ? 60 : d;
+  } else if (when !== 'allday') {
+    part = when;
+  }
+
+  const isEdit = editing[kind] != null;
+  const old = isEdit ? events[editing[kind]] : null;
+
+  saving = true;
+  try {
+    let address = '', lat = null, lon = null, placeRef = null, pieces = null;
+    const choice = $(p + 'Place').value;
+    if (choice === 'typed') {
+      const ap = p + 'a';
+      const a = readAddr(ap);
+      if (pendingGps[ap]) {
+        lat = pendingGps[ap].lat; lon = pendingGps[ap].lon; address = 'Current location';
+      } else if (!addrIsEmpty(a)) {
+        pieces = a; address = addrString(a);
+        if (isEdit && old && old.lat != null && (old.street ? sameAddr(a, old) : (!old.placeRef && old.address === address))) {
+          lat = old.lat; lon = old.lon;
+        } else {
+          const r = await resolveAddress(a, statusId, true);
+          if (!r) return;
+          if (r.geo) { lat = r.geo.lat; lon = r.geo.lon; }
+        }
+      } else {
+        setStatus(statusId, 'Type the address, tap Use My Location, or choose No place.', true);
+        return;
+      }
+    } else {
+      placeRef = selectedPlaceRef(p);
+    }
+
+    const warn = (choice === 'typed' && lat == null) ? $(statusId).textContent : '';
+    const item = { title, repeat, date, days, time, part, duration, address, lat, lon };
+    if (placeRef) { item.placeRef = placeRef; item.address = ''; }
+    if (pieces) { item.street = pieces.street; item.city = pieces.city; item.state = pieces.state; item.zip = pieces.zip; rememberDefaults(pieces); }
+    if (isEdit) events[editing[kind]] = item; else events.push(item);
+    persist(KEY_EVENTS, events);
+    renderEventLists(); refreshCounts();
+    resetEventForm(p);
+    setStatus(statusId, warn || 'Saved.', !!warn);
+  } finally { saving = false; }
+}
+
+async function saveBulkEvents(){
+  const raw = val('bulkText');
+  if (!raw) { setStatus('bulkStatus', 'Paste at least one line.', true); return; }
+
+  const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  let added = 0, failed = 0;
+
+  for (const line of lines) {
+    const parts = line.split('|').map(p => p.trim());
+    if (parts.length < 3) { failed++; continue; }
+    const [date, time, title, address, durationRaw] = parts;
+    const duration = durationRaw ? parseInt(durationRaw, 10) : 60;
+    let lat = null, lon = null;
+    if (address) {
+      setStatus('bulkStatus', 'Looking up: ' + title + '...');
+      try {
+        const geo = await geocodeAddress(address);
+        if (geo) { lat = geo.lat; lon = geo.lon; }
+      } catch (e) { /* leave lat/lon null, event still gets added */ }
+    }
+    events.push({ repeat: 'once', date, time: time || '', duration, title: title || 'Untitled', address: address || '', lat, lon });
+    added++;
+  }
+
+  persist(KEY_EVENTS, events);
+  renderEventLists(); refreshCounts();
+  setStatus('bulkStatus', added + ' event(s) added' + (failed > 0 ? ', ' + failed + ' line(s) could not be read (need at least date | time | title)' : '') + '.', failed > 0);
+  setVal('bulkText', '');
+}
+
+/* ---------- Export / Import ---------- */
+function exportObject(){
+  return { app: 'treo-beta', version: 2, userName: profile.name || '', treoZones: zones, treoEvents: events, treoContacts: contacts };
+}
+function exportString(){ return JSON.stringify(exportObject(), null, 2); }
+function fillExport(){ $('exportText').value = exportString(); }
+$('shareBox').addEventListener('toggle', () => { if ($('shareBox').open) fillExport(); });
+
+async function copyExport(){
+  fillExport();
+  const text = $('exportText').value;
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus('exportStatus', 'Copied. Paste it into a message or email to the other phone.');
+  } catch (e) {
+    try {
+      $('exportText').select();
+      const ok = document.execCommand('copy');
+      setStatus('exportStatus', ok ? 'Copied. Paste it into a message or email to the other phone.' : 'Could not copy. Press and hold the text above and choose Copy.', !ok);
+    } catch (e2) {
+      setStatus('exportStatus', 'Could not copy. Press and hold the text above and choose Copy.', true);
+    }
+  }
+}
+function saveExportFile(){
+  fillExport();
+  try {
+    const blob = new Blob([$('exportText').value], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'treo-setup.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    setStatus('exportStatus', 'Saved as treo-setup.json.');
+  } catch (e) {
+    setStatus('exportStatus', 'Could not save a file here. Use Copy instead.', true);
+  }
+}
+function loadImportFile(input){
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => { setVal('importText', String(reader.result || '')); setStatus('importStatus', 'File loaded. Check it, then tap Import.'); };
+  reader.onerror = () => setStatus('importStatus', 'Could not read that file.', true);
+  reader.readAsText(f);
+}
+
+let importArmed = false;
+function objectsOnly(v){ return Array.isArray(v) ? v.filter(x => x && typeof x === 'object' && !Array.isArray(x)) : []; }
+function importProfile(){
+  const raw = val('importText');
+  if (!raw) { setStatus('importStatus', 'Paste an exported setup first.', true); return; }
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    setStatus('importStatus', 'That doesn\'t look like valid text from Treo - check it was copied in full.', true);
+    return;
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    setStatus('importStatus', 'That doesn\'t look like a Treo setup.', true);
+    return;
+  }
+  // Import replaces everything on this phone, so it asks once before doing it.
+  if (!importArmed) {
+    importArmed = true;
+    $('importBtn').textContent = 'Tap again to replace everything here';
+    setStatus('importStatus', 'This will replace the places, people and schedule on this phone. Tap again to go ahead.', true);
+    setTimeout(() => { importArmed = false; $('importBtn').textContent = 'Import (replaces everything here)'; }, 6000);
+    return;
+  }
+  importArmed = false;
+  $('importBtn').textContent = 'Import (replaces everything here)';
+  zones = objectsOnly(data.treoZones);
+  events = objectsOnly(data.treoEvents);
+  contacts = objectsOnly(data.treoContacts);
+  profile = { name: typeof data.userName === 'string' ? data.userName.trim() : '' };
+  persist(KEY_ZONES, zones);
+  persist(KEY_EVENTS, events);
+  persist(KEY_CONTACTS, contacts);
+  persist(KEY_PROFILE, profile);
+  resetZoneForm(); resetContactForm(); resetEventForm('r'); resetEventForm('o');
+  refreshSetup();
+  setStatus('importStatus', 'Imported: ' + zones.length + ' place(s), ' + events.length + ' scheduled item(s), ' + contacts.length + ' person(s). This replaced whatever was there before.');
+}
+
+/* ---------- Start ---------- */
+$('zAddrBlock').innerHTML = addrBlockHTML('z');
+$('cAddrBlock').innerHTML = addrBlockHTML('c');
+$('rForm').innerHTML = eventFormHTML('r');
+$('oForm').innerHTML = eventFormHTML('o');
+resetZoneForm(); resetContactForm(); resetEventForm('r'); resetEventForm('o');
+refreshSetup();
 updateDashTip();
+if (location.hash === '#setup') goToSetup();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
